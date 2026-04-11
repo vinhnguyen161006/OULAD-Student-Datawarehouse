@@ -1,0 +1,32 @@
+# Environment
+.env
+
+data/raw/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.venv/
+venv/
+
+# dbt
+dbt_student/target/
+dbt_student/dbt_packages/
+dbt_student/logs/
+dbt_student/.user.yml
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

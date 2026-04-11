@@ -1,4 +1,4 @@
-# CLAUDE.md — Student Data Warehouse Project
+# Student Data Warehouse Project
 
 ## Tổng quan dự án
 
@@ -182,13 +182,3 @@ x
 | Metabase | localhost:3000 | — (setup lần đầu) |
 | Spark Master UI | localhost:8081 | — |
 
-## Phân công
-
-| Thành viên | Phụ trách | File chính |
-|-----------|-----------|------------|
-| Tùng | Docker Compose, infrastructure, schema init | `docker-compose.yml`, `docker/mysql/init.sql`, `Makefile` |
-| Tú | DAG 1 — Staging load | `dags/01_staging_load.py`, `scripts/spark_load_staging.py` |
-| Vinh | DAG 2 — PySpark transform → DWH | `dags/02_silver_pyspark.py`, `scripts/spark_clean_vle.py`, `scripts/spark_build_fact.py` |
-| Quang & Đức | DAG 3 — dbt Marts | `dags/03_gold_dbt_run.py`, `dbt_student/models/` |
-| Long | Metabase dashboards + docs | `docs/`, `README.md` |
-# OULAD-Student-Datawarehouse

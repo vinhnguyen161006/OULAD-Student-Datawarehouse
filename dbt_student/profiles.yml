@@ -1,0 +1,11 @@
+student_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: mysql
+      server: "{{ env_var('DBT_HOST', 'mysql') }}"
+      port: 3306
+      database: student_data_mart
+      schema: student_data_mart
+      username: "{{ env_var('DBT_USER', 'root') }}"
+      password: "{{ env_var('DBT_PASSWORD', 'rootpassword') }}"

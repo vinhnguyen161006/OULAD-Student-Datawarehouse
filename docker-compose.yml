@@ -1,0 +1,215 @@
+# ============================================================
+# Airflow common config — dùng YAML anchor để tránh lặp
+# ============================================================
+x-airflow-common:
+  &airflow-common
+  build:
+    context: ./docker/airflow
+    dockerfile: Dockerfile
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # Airflow Connections
+    AIRFLOW_CONN_MYSQL_DEFAULT: 'mysql://root:rootpassword@mysql:3306/student_dwh'
+    AIRFLOW_CONN_SPARK_DEFAULT: '{"conn_type": "spark", "host": "spark://spark-master", "port": 7077}'
+    # PySpark / scripts env
+    MYSQL_HOST: mysql
+    MYSQL_PORT: '3306'
+    MYSQL_USER: root
+    MYSQL_PASSWORD: rootpassword
+    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./scripts:/opt/airflow/scripts
+    - ./data:/opt/airflow/data
+    - ./dbt_student:/opt/dbt_student
+    - airflow_logs:/opt/airflow/logs
+    - airflow_plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends
+    postgres:
+      condition: service_healthy
+    mysql:
+      condition: service_healthy
+
+# ============================================================
+services:
+# ============================================================
+
+  # ----------------------------------------------------------
+  # PostgreSQL — Airflow metadata DB
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # MySQL 8.0 — Staging + DWH + Mart
+  # ----------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: student_dwh
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # Airflow — init (chạy 1 lần, tạo DB + user admin)
+  # ----------------------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin || true
+        echo "Airflow init done."
+    restart: on-failure
+
+  # ----------------------------------------------------------
+  # Airflow — webserver  (UI: localhost:8080)
+  # ----------------------------------------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      <<: *airflow-common-depends
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # Airflow — scheduler
+  # ----------------------------------------------------------
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      <<: *airflow-common-depends
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # Airflow — triggerer (cần cho deferred operators)
+  # ----------------------------------------------------------
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    depends_on:
+      <<: *airflow-common-depends
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # Spark Master  (UI: localhost:8081)
+  # ----------------------------------------------------------
+  spark-master:
+    build:
+      context: ./docker/spark
+      dockerfile: Dockerfile
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8081
+    ports:
+      - "8081:8081"
+      - "7077:7077"
+    volumes:
+      - ./scripts:/opt/spark/scripts
+      - ./data:/opt/airflow/data   # cùng path với Airflow container
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # Spark Worker
+  # ----------------------------------------------------------
+  spark-worker:
+    build:
+      context: ./docker/spark
+      dockerfile: Dockerfile
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+    volumes:
+      - ./scripts:/opt/spark/scripts
+      - ./data:/opt/airflow/data   # cùng path với Airflow container
+    depends_on:
+      - spark-master
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # Metabase  (UI: localhost:3000)
+  # ----------------------------------------------------------
+  metabase:
+    image: metabase/metabase:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - metabase_data:/metabase-data
+    environment:
+      MB_DB_TYPE: h2
+      MB_DB_FILE: /metabase-data/metabase.db
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+# ============================================================
+volumes:
+# ============================================================
+  postgres_data:
+  mysql_data:
+  airflow_logs:
+  airflow_plugins:
+  metabase_data:
