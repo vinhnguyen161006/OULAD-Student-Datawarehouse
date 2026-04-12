@@ -24,6 +24,11 @@ x-airflow-common:
     MYSQL_USER: root
     MYSQL_PASSWORD: rootpassword
     JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+    # MinIO — Bronze data lake
+    MINIO_ENDPOINT: http://minio:9000
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    MINIO_BUCKET: oulad-bronze
   volumes:
     - ./dags:/opt/airflow/dags
     - ./scripts:/opt/airflow/scripts
@@ -157,10 +162,10 @@ services:
     build:
       context: ./docker/spark
       dockerfile: Dockerfile
+    hostname: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --webui-port 8081
     environment:
-      - SPARK_MODE=master
-      - SPARK_MASTER_PORT=7077
-      - SPARK_MASTER_WEBUI_PORT=8081
+      - SPARK_LOCAL_IP=spark-master
     ports:
       - "8081:8081"
       - "7077:7077"
@@ -176,17 +181,52 @@ services:
     build:
       context: ./docker/spark
       dockerfile: Dockerfile
+    hostname: spark-worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=2G
-      - SPARK_WORKER_CORES=2
+      - SPARK_LOCAL_IP=spark-worker
     volumes:
       - ./scripts:/opt/spark/scripts
       - ./data:/opt/airflow/data   # cùng path với Airflow container
     depends_on:
       - spark-master
     restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # MinIO  (S3 API: localhost:9000 | Console: localhost:9001)
+  # ----------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # MinIO init — tạo bucket oulad-bronze (chạy 1 lần)
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/oulad-bronze &&
+      mc mb --ignore-existing local/oulad-silver &&
+      echo 'Buckets oulad-bronze + oulad-silver ready'
+      "
+    restart: on-failure
 
   # ----------------------------------------------------------
   # Metabase  (UI: localhost:3000)
@@ -213,3 +253,4 @@ volumes:
   airflow_logs:
   airflow_plugins:
   metabase_data:
+  minio_data:

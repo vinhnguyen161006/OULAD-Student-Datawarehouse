@@ -1,6 +1,10 @@
 -- ============================================================
 -- Student Data Warehouse — MySQL Init Script
 -- Tự động chạy khi MySQL container khởi động lần đầu
+--
+-- Kiến trúc 4 lớp: Bronze (MinIO) → Silver (MinIO Parquet)
+--   → DWH (MySQL Star Schema) → Mart (dbt)
+-- Không có bảng stg_* — Staging layer nằm trong MinIO Silver.
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS student_dwh
@@ -10,82 +14,6 @@ CREATE DATABASE IF NOT EXISTS student_data_mart
     CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE student_dwh;
-
--- ============================================================
--- STAGING LAYER — bảng stg_* (raw, mirror CSV gốc)
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS stg_student_info (
-    code_module          VARCHAR(10),
-    code_presentation    VARCHAR(10),
-    id_student           INT,
-    gender               VARCHAR(5),
-    region               VARCHAR(60),
-    highest_education    VARCHAR(60),
-    imd_band             VARCHAR(15),
-    age_band             VARCHAR(10),
-    num_of_prev_attempts INT,
-    studied_credits      INT,
-    disability           VARCHAR(5),
-    final_result         VARCHAR(15)
-);
-
-CREATE TABLE IF NOT EXISTS stg_courses (
-    code_module                VARCHAR(10),
-    code_presentation          VARCHAR(10),
-    module_presentation_length INT
-);
-
-CREATE TABLE IF NOT EXISTS stg_assessments (
-    code_module       VARCHAR(10),
-    code_presentation VARCHAR(10),
-    id_assessment     INT,
-    assessment_type   VARCHAR(10),
-    date              INT,           -- ngày trong kỳ (có thể NULL = cuối kỳ)
-    weight            FLOAT
-);
-
-CREATE TABLE IF NOT EXISTS stg_student_assessment (
-    id_assessment  INT,
-    id_student     INT,
-    date_submitted INT,
-    is_banked      TINYINT,
-    score          FLOAT            -- có thể NULL nếu chưa nộp
-);
-
-CREATE TABLE IF NOT EXISTS stg_student_registration (
-    code_module           VARCHAR(10),
-    code_presentation     VARCHAR(10),
-    id_student            INT,
-    date_registration     INT,
-    date_unregistration   INT        -- NULL nếu không rút môn
-);
-
-CREATE TABLE IF NOT EXISTS stg_student_vle (
-    code_module       VARCHAR(10),
-    code_presentation VARCHAR(10),
-    id_student        INT,
-    id_site           INT,
-    date              INT,
-    sum_click         INT
-);
-
-CREATE TABLE IF NOT EXISTS stg_vle (
-    id_site           INT,
-    code_module       VARCHAR(10),
-    code_presentation VARCHAR(10),
-    activity_type     VARCHAR(50),
-    week_from         INT,
-    week_to           INT
-);
-
--- Bảng trung gian dùng bởi spark_clean_vle.py
-CREATE TABLE IF NOT EXISTS tmp_vle_clicks (
-    id_student        INT,
-    code_module       VARCHAR(10),
-    code_presentation VARCHAR(10),
-    total_clicks      BIGINT
-);
 
 -- ============================================================
 -- DWH LAYER — Star Schema
@@ -130,9 +58,9 @@ CREATE TABLE IF NOT EXISTS Dim_Student (
 );
 
 CREATE TABLE IF NOT EXISTS Dim_Assessment (
-    assessment_key INT AUTO_INCREMENT PRIMARY KEY,
-    id_assessment  INT UNIQUE NOT NULL,
-    code_module    VARCHAR(10),
+    assessment_key  INT AUTO_INCREMENT PRIMARY KEY,
+    id_assessment   INT UNIQUE NOT NULL,
+    code_module     VARCHAR(10),
     assessment_type VARCHAR(10),   -- TMA / CMA / Exam
     weight          FLOAT,
     day_due         INT            -- NULL = Exam (ngày thi cuối kỳ)
@@ -149,7 +77,19 @@ CREATE TABLE IF NOT EXISTS Fact_Performance (
     final_result    VARCHAR(15),   -- Pass / Fail / Withdrawn / Distinction
     score_vs_avg    FLOAT,         -- avg_score - AVG cùng code_presentation
     risk_group      VARCHAR(10),   -- Low (>=70) / Medium (50-69) / High (<50)
-    CONSTRAINT fk_fact_student    FOREIGN KEY (student_key)  REFERENCES Dim_Student(student_key),
-    CONSTRAINT fk_fact_course     FOREIGN KEY (course_key)   REFERENCES Dim_Course(course_key),
-    CONSTRAINT fk_fact_time       FOREIGN KEY (time_key)     REFERENCES Dim_Time(time_key)
+    CONSTRAINT fk_fact_student FOREIGN KEY (student_key) REFERENCES Dim_Student(student_key),
+    CONSTRAINT fk_fact_course  FOREIGN KEY (course_key)  REFERENCES Dim_Course(course_key),
+    CONSTRAINT fk_fact_time    FOREIGN KEY (time_key)    REFERENCES Dim_Time(time_key)
+);
+
+-- ============================================================
+-- MONITORING — ghi kết quả health checks từ DAG 05
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS monitoring_log (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    check_name  VARCHAR(100) NOT NULL,
+    status      VARCHAR(10)  NOT NULL,   -- OK / WARN / FAIL
+    detail      TEXT,
+    checked_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );

@@ -1,0 +1,107 @@
+"""
+DAG 03 — dwh_load
+==================
+Đọc Silver Parquet từ MinIO → build Star Schema → load vào MySQL student_dwh.
+
+Input  : Airflow Dataset s3://oulad-silver
+         (trigger tự động từ silver_processing — DAG 02)
+Output : Airflow Dataset mysql://student_dwh/fact_performance
+         (trigger tự động gold_dbt_run — DAG 04)
+
+Thành viên phụ trách: Vinh
+"""
+
+from datetime import datetime
+
+from airflow.datasets import Dataset
+from airflow.decorators import dag, task
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+
+SILVER_DATASET    = Dataset("s3://oulad-silver")
+FACT_PERF_DATASET = Dataset("mysql://student_dwh/fact_performance")
+
+SPARK_APP = "/opt/airflow/scripts/spark_silver_to_dwh.py"
+
+JARS = ",".join([
+    "/opt/airflow/jars/mysql-connector-j-8.0.33.jar",
+    "/opt/airflow/jars/hadoop-aws-3.3.4.jar",
+    "/opt/airflow/jars/aws-java-sdk-bundle-1.12.262.jar",
+])
+
+_SPARK_CONF = {
+    "spark.sql.shuffle.partitions":               "10",
+    "spark.driver.memory":                        "2g",
+    "spark.executor.memory":                      "2g",
+    "spark.network.timeout":                      "600s",
+    "spark.executor.heartbeatInterval":           "60s",
+    "spark.hadoop.fs.s3a.path.style.access":      "true",
+    "spark.hadoop.fs.s3a.impl":                   "org.apache.hadoop.fs.s3a.S3AFileSystem",
+    "spark.hadoop.fs.s3a.connection.ssl.enabled": "false",
+}
+
+_ENV_VARS = {
+    "MYSQL_HOST":      "mysql",
+    "MYSQL_PORT":      "3306",
+    "MYSQL_USER":      "root",
+    "MYSQL_PASSWORD":  "rootpassword",
+    "MINIO_ENDPOINT":  "http://minio:9000",
+    "MINIO_ACCESS_KEY":"minioadmin",
+    "MINIO_SECRET_KEY":"minioadmin",
+    "MINIO_BUCKET_SILVER": "oulad-silver",
+    "SPARK_MASTER":    "spark://spark-master:7077",
+}
+
+
+@dag(
+    dag_id="dwh_load",
+    schedule=[SILVER_DATASET],
+    start_date=datetime(2024, 1, 1),
+    catchup=False,
+    tags=["dwh", "pyspark", "minio", "mysql", "oulad"],
+    doc_md="""
+## DAG 03 — DWH Load (Silver → Star Schema)
+
+**Mục đích**: Build Star Schema trong MySQL từ Silver Parquet.
+
+**Input dataset**: `s3://oulad-silver`
+→ Tự động trigger bởi `silver_processing` (DAG 02).
+
+**Output dataset**: `mysql://student_dwh/fact_performance`
+→ Tự động trigger `gold_dbt_run` (DAG 04).
+
+**Thứ tự load** (theo FK dependency):
+1. Dim_Time — đọc từ DB (pre-populated bởi init.sql)
+2. Dim_Course ← silver/student_info/
+3. Dim_Student ← silver/student_info/
+4. Dim_Assessment ← silver/assessments/
+5. Fact_Performance ← join student_info + student_assessment + vle_clicks
+
+**Metrics tính**:
+- `avg_score` = SUM(score × weight) / SUM(weight)
+- `score_vs_avg` = PySpark Window OVER (PARTITION BY code_presentation)
+- `risk_group` = Low (≥70) / Medium (50-69) / High (<50 hoặc NULL)
+    """,
+)
+def dwh_load_dag():
+
+    load = SparkSubmitOperator(
+        task_id="spark_silver_to_dwh",
+        conn_id="spark_default",
+        application=SPARK_APP,
+        name="dwh_load",
+        deploy_mode="client",
+        jars=JARS,
+        conf=_SPARK_CONF,
+        env_vars=_ENV_VARS,
+        verbose=True,
+    )
+
+    @task(outlets=[FACT_PERF_DATASET])
+    def publish_fact_dataset():
+        """Publish dataset → trigger DAG 04 (gold_dbt_run) tự động."""
+        pass
+
+    load >> publish_fact_dataset()
+
+
+dwh_load_dag()

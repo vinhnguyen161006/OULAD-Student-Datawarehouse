@@ -1,4 +1,13 @@
-.PHONY: up down restart build logs airflow-logs mysql-shell dbt-run dbt-test clean help
+.PHONY: up down restart build logs airflow-logs minio-shell mysql-shell dbt-run dbt-test clean help setup-data upload-data monitoring
+
+## setup-data: Tải dữ liệu OULAD về data/raw/ (chạy lần đầu sau khi clone)
+setup-data:
+	powershell -ExecutionPolicy Bypass -File download_data.ps1
+
+## upload-data: Upload 7 CSV từ data/raw/ lên MinIO oulad-bronze bucket
+upload-data:
+	docker compose exec airflow-scheduler \
+		python /opt/airflow/scripts/upload_to_minio.py
 
 ## up: Khởi động toàn bộ stack (detached)
 up:
@@ -24,9 +33,18 @@ logs:
 airflow-logs:
 	docker compose logs -f airflow-webserver airflow-scheduler
 
-## mysql-shell: Mở MySQL shell
+## minio-shell: Mở MinIO console URL
+minio-shell:
+	@echo "MinIO Console: http://localhost:9001  (minioadmin / minioadmin)"
+
+## mysql-shell: Mở MySQL shell (student_dwh)
 mysql-shell:
-	docker compose exec mysql mysql -u root -prootpassword
+	docker compose exec mysql mysql -u root -prootpassword student_dwh
+
+## monitoring: Xem kết quả health checks gần nhất
+monitoring:
+	docker compose exec mysql mysql -u root -prootpassword student_dwh \
+		-e "SELECT check_name, status, detail, checked_at FROM monitoring_log ORDER BY checked_at DESC LIMIT 20;"
 
 ## dbt-run: Chạy dbt build bên trong container scheduler
 dbt-run:

@@ -1,8 +1,6 @@
 # Environment
 .env
 
-data/raw/*.csv
-
 # Python
 __pycache__/
 *.py[cod]
@@ -30,3 +28,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Data — không commit file CSV gốc (~1GB+)
+data/
+
+# Claude Code
+.claude/
