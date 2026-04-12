@@ -1,4 +1,4 @@
-# CLAUDE.md — Student Data Warehouse Project
+# OULAD Student Data Warehouse Project
 
 ## Tổng quan dự án
 
@@ -92,37 +92,50 @@ Student-Data-Warehouse/
 ## Pipeline — 5 DAGs (event-driven)
 
 ```
-01_bronze_ingest
-  ──s3://oulad-bronze──▶ 02_silver_processing
-    ──s3://oulad-silver──▶ 03_dwh_load
-      ──mysql://student_dwh/fact_performance──▶ 04_gold_dbt_run
-        ──mysql://student_data_mart/──▶ 05_monitoring
+                           CSV OULAD
+                              │
+                              ▼
+                        ┌─────────────┐
+                        │ 01 | BRONZE │
+                        │   Ingest    │
+                        └──────┬──────┘
+                        s3://oulad-bronze
+                              ▼
+                        ┌─────────────┐
+                        │ 02 | SILVER │
+                        │  Processing │
+                        └──────┬──────┘
+                        s3://oulad-silver
+                              ▼
+                        ┌─────────────┐
+                        │ 03 |  DWH   │
+                        │    Load     │
+                        └──────┬──────┘
+                        mysql://student_dwh
+                              ▼
+                        ┌─────────────┐
+                        │ 04 | GOLD   │
+                        │    (dbt)    │
+                        └──────┬──────┘
+                        mysql://student_data_mart
+                              ▼
+                        ┌─────────────┐
+                        │ 05 | MONITOR│
+                        │   Health    │
+                        └─────────────┘
+                              ▼
+                           Metabase
 ```
 
-### DAG 01 — `01_bronze_ingest.py`
-- Kiểm tra 7 CSV files có đủ trong MinIO `oulad-bronze` chưa
-- Publish Dataset: `s3://oulad-bronze`
+### Bảng DAGs
 
-### DAG 02 — `02_silver_processing.py`
-- Trigger khi `s3://oulad-bronze` available
-- PySpark đọc Bronze CSV → validate → ghi Silver Parquet vào `oulad-silver/`
-- Output: `student_info/`, `assessments/`, `vle/`, `student_registration/`, `student_assessment/`, `vle_clicks/`
-- Publish Dataset: `s3://oulad-silver`
-
-### DAG 03 — `03_dwh_load.py`
-- Trigger khi `s3://oulad-silver` available
-- PySpark đọc Silver Parquet → build Dim_* + Fact_Performance → load MySQL
-- Publish Dataset: `mysql://student_dwh/fact_performance`
-
-### DAG 04 — `04_gold_dbt_run.py`
-- Trigger khi `mysql://student_dwh/fact_performance` available
-- Chạy `dbt build` → student_data_mart
-- Publish Dataset: `mysql://student_data_mart/`
-
-### DAG 05 — `05_monitoring.py`
-- Trigger khi `mysql://student_data_mart/` available
-- Kiểm tra row counts, NULL rates, 4 kỳ học
-- Ghi kết quả vào `monitoring_log`
+| # | DAG | Trigger | Task | Output |
+|:-:|-----|---------|------|--------|
+| **01** | Bronze Ingest | Manual/Schedule | Kiểm tra 7 CSV files | `s3://oulad-bronze` |
+| **02** | Silver Processing | s3://oulad-bronze | PySpark: validate + clean → Parquet | `s3://oulad-silver` |
+| **03** | DWH Load | s3://oulad-silver | PySpark: build Dim_* + Fact_Performance | `mysql://student_dwh` |
+| **04** | Gold (dbt) | mysql://student_dwh | dbt: build + test marts | `mysql://student_data_mart` |
+| **05** | Monitoring | mysql://student_data_mart | Check row counts, NULL rates, metrics | `monitoring_log` |
 
 ## Mô hình dữ liệu
 
@@ -139,16 +152,15 @@ Student-Data-Warehouse/
 
 ### DWH — Star Schema trong `student_dwh`
 
-**Dim_Student** — id_student, gender, region, highest_education, imd_band, age_band, disability, num_of_prev_attempts, studied_credits
+| Bảng | Cột chính |
+|------|----------|
+| **Dim_Student** | id_student, gender, region, highest_education, imd_band, age_band, disability, num_of_prev_attempts, studied_credits |
+| **Dim_Course** | code_module, code_presentation, module_presentation_length |
+| **Dim_Time** | code_presentation, year, semester_type, presentation_label *(4 bản ghi cố định)* |
+| **Dim_Assessment** | id_assessment, code_module, assessment_type, weight, day_due |
+| **Fact_Performance** | avg_score, total_clicks, num_submissions, final_result, score_vs_avg, risk_group |
 
-**Dim_Course** — code_module, code_presentation, module_presentation_length
-
-**Dim_Time** — code_presentation, year, semester_type, presentation_label *(4 bản ghi cố định)*
-
-**Dim_Assessment** — id_assessment, code_module, assessment_type, weight, day_due
-
-**Fact_Performance** *(grain: sinh viên × course presentation)*
-- avg_score, total_clicks, num_submissions, final_result, score_vs_avg, risk_group
+*Fact_Performance grain: sinh viên × course presentation*
 
 ### student_data_mart — dbt models (Gold)
 
@@ -160,7 +172,7 @@ Student-Data-Warehouse/
 | `mart_vle_engagement` | Tương quan click rate vs avg_score |
 | `mart_at_risk_students` | Danh sách sinh viên High Risk |
 
-## Kết nối dịch vụ (Docker Compose defaults)
+## 🌐 Kết nối dịch vụ (Docker Compose defaults)
 
 | Dịch vụ | Host:Port | Credential |
 |---------|-----------|------------|
@@ -170,13 +182,3 @@ Student-Data-Warehouse/
 | MinIO API | localhost:9000 | minioadmin / minioadmin |
 | Metabase | localhost:3000 | — (setup lần đầu) |
 | Spark Master UI | localhost:8081 | — |
-
-## Phân công
-
-| Thành viên | Phụ trách | File chính |
-|-----------|-----------|------------|
-| Tùng | Docker Compose, infrastructure, schema init | `docker-compose.yml`, `docker/mysql/init.sql`, `Makefile` |
-| Tú | DAG 01 Bronze + DAG 02 Silver processing | `dags/01_bronze_ingest.py`, `dags/02_silver_processing.py`, `scripts/spark_bronze_to_silver.py` |
-| Vinh | DAG 03 DWH load | `dags/03_dwh_load.py`, `scripts/spark_silver_to_dwh.py` |
-| Quang & Đức | DAG 04 dbt Marts | `dags/04_gold_dbt_run.py`, `dbt_student/models/` |
-| Long | DAG 05 Monitoring + Metabase + docs | `dags/05_monitoring.py`, `scripts/spark_monitoring.py`, `docs/` |
