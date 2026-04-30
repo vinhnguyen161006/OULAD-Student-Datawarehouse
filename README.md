@@ -177,7 +177,7 @@ Student-Data-Warehouse/
 | Dịch vụ | Host:Port | Credential |
 |---------|-----------|------------|
 | Airflow UI | localhost:8080 | admin / admin |
-| MySQL | localhost:3306 | root / rootpassword |
+| MySQL | localhost:3307 | root / rootpassword |
 | MinIO Console | localhost:9001 | minioadmin / minioadmin |
 | MinIO API | localhost:9000 | minioadmin / minioadmin |
 | Metabase | localhost:3000 | — (setup lần đầu) |
