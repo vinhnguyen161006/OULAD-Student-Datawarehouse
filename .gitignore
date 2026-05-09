@@ -1,36 +1,167 @@
-# Environment
+# ============================================================
+# Environment & secrets
+# ============================================================
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+credentials/
 
+# ============================================================
 # Python
+# ============================================================
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 *.egg-info/
+*.egg
 dist/
 build/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
 .venv/
 venv/
+env/
+ENV/
 
+# ============================================================
+# Jupyter
+# ============================================================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+*-checkpoint.ipynb
+
+# ============================================================
 # dbt
+# ============================================================
 dbt_student/target/
 dbt_student/dbt_packages/
 dbt_student/logs/
 dbt_student/.user.yml
+.dbt/
 
-# Docker
+# ============================================================
+# Airflow runtime (local + CI)
+# ============================================================
+logs/
+airflow/logs/
+.airflow/
+airflow-webserver.pid
+airflow.cfg
+airflow.db
+webserver_config.py
+standalone_admin_password.txt
 *.log
+*.pid
 
+# ============================================================
+# Spark / Hadoop artifacts
+# ============================================================
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc
+_SUCCESS
+_committed_*
+_started_*
+
+# ============================================================
 # OS
+# ============================================================
 .DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
 
-# IDE
+# ============================================================
+# IDE / Editor
+# ============================================================
 .vscode/
 .idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
 
-# Data — không commit file CSV gốc (~1GB+)
-data/
-
+# ============================================================
 # Claude Code
-.claude/
+# Giữ .claude/settings.json (project config) tracked.
+# Chỉ ignore local override + cache.
+# ============================================================
+.claude/settings.local.json
+.claude/projects/
+.claude/local/
+.claude/cache/
+
+# ============================================================
+# Data — không commit dataset gốc / sản phẩm trung gian
+# ============================================================
+data/raw/*.csv
+data/raw/*.zip
+data/raw/*.tsv
+data/raw/*.parquet
+data/intermediate/
+data/processed/
+data/output/
+*.duckdb
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================================
+# Database backup / dump
+# ============================================================
+*.dump
+*.sql.bak
+*.sql.gz
+*.bak
+mysql-data/
+postgres-data/
+
+# ============================================================
+# Local Docker Compose override (dev customization)
+# ============================================================
+docker-compose.override.yml
+docker-compose.override.yaml
+compose.override.yml
+
+# ============================================================
+# Temp / scratch folders
+# ============================================================
+tmp/
+temp/
+scratch/
+.scratch/
+
+# ============================================================
+# Property-based testing cache
+# ============================================================
+.hypothesis/
+
+# ============================================================
+# Misc
+# ============================================================
+*.tmp
+*~
+*.orig
+.cache/
+node_modules/
+*.tgz
+
+CLAUDE.md
+.claude
+

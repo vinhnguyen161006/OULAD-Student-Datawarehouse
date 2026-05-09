@@ -1,0 +1,188 @@
+{
+  "name": "Student Demographics & Success Factors",
+  "description": "Tác động của nhân khẩu học (IMD, region, education, age, disability) lên kết quả học tập.",
+  "cards": [
+    {
+      "type": "text",
+      "display": "heading",
+      "text": "👥 Demographics & Success Factors — Phân tích bất bình đẳng học tập",
+      "position": {"row": 0, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "Dashboard này trả lời câu hỏi: **đặc điểm nhân khẩu nào ảnh hưởng tới khả năng pass?** Nguồn: `Fact_Performance` join với `Dim_Student`.",
+      "position": {"row": 1, "col": 0, "size_x": 24, "size_y": 1}
+    },
+
+    {
+      "name": "Overall Pass Rate %",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ROUND(AVG(CASE WHEN final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate FROM Fact_Performance",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"pass_rate\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 2, "col": 0, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Distinction Rate %",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ROUND(AVG(CASE WHEN final_result='Distinction' THEN 100.0 ELSE 0.0 END), 1) AS distinction_rate FROM Fact_Performance",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"distinction_rate\"]": {"column_title": "Distinction", "suffix": "%"}
+        }
+      },
+      "position": {"row": 2, "col": 6, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Withdrawn Rate %",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ROUND(AVG(CASE WHEN final_result='Withdrawn' THEN 100.0 ELSE 0.0 END), 1) AS withdrawn_rate FROM Fact_Performance",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"withdrawn_rate\"]": {"column_title": "Withdrawn", "suffix": "%"}
+        }
+      },
+      "position": {"row": 2, "col": 12, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Student Journey Funnel",
+      "display": "funnel",
+      "database": "OULAD Student DWH",
+      "query": "SELECT 'Registered' AS step, 1 AS sort_order, COUNT(*) AS students FROM Dim_Student\nUNION ALL SELECT 'Submitted >= 1', 2, COUNT(DISTINCT student_key) FROM Fact_Performance WHERE score IS NOT NULL\nUNION ALL SELECT 'Passed', 3, COUNT(DISTINCT student_key) FROM Fact_Performance WHERE final_result IN ('Pass','Distinction')\nUNION ALL SELECT 'Distinction', 4, COUNT(DISTINCT student_key) FROM Fact_Performance WHERE final_result = 'Distinction'\nORDER BY sort_order",
+      "visualization_settings": {
+        "funnel.metric": "students",
+        "funnel.dimension": "step"
+      },
+      "position": {"row": 2, "col": 18, "size_x": 6, "size_y": 8}
+    },
+
+    {
+      "type": "text",
+      "display": "text",
+      "text": "### 🔴 Insight #1 — IMD Inequality\nPass rate đi từ **66.2%** (vùng nghèo nhất 0-10%) → **76.6%** (vùng giàu hơn 40-50%). Khoảng cách **~10pt** chỉ do socio-economic.",
+      "position": {"row": 6, "col": 0, "size_x": 12, "size_y": 2}
+    },
+    {
+      "name": "Pass Rate by IMD Band (Poverty)",
+      "display": "bar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ds.imd_band AS `IMD Band`,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp JOIN Dim_Student ds ON fp.student_key = ds.student_key\nWHERE ds.imd_band IS NOT NULL AND ds.imd_band <> ''\nGROUP BY ds.imd_band ORDER BY ds.imd_band",
+      "visualization_settings": {
+        "graph.dimensions": ["IMD Band"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.x_axis.title_text": "IMD Band (poor → rich)",
+        "graph.y_axis.title_text": "Pass Rate (%)",
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 8, "col": 0, "size_x": 12, "size_y": 7}
+    },
+    {
+      "name": "Region Performance Ranking",
+      "display": "row",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ds.region AS Region,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp JOIN Dim_Student ds ON fp.student_key = ds.student_key\nGROUP BY ds.region ORDER BY pass_rate_pct DESC",
+      "visualization_settings": {
+        "graph.dimensions": ["Region"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.x_axis.title_text": "Pass Rate (%)",
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 10, "col": 12, "size_x": 12, "size_y": 11}
+    },
+    {
+      "name": "Disability Impact on Outcome",
+      "display": "bar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ds.disability AS `Khuyết tật`, fp.final_result AS `Kết quả`, COUNT(*) AS n\nFROM Fact_Performance fp JOIN Dim_Student ds ON fp.student_key = ds.student_key\nGROUP BY ds.disability, fp.final_result\nORDER BY ds.disability, fp.final_result",
+      "visualization_settings": {
+        "graph.dimensions": ["Khuyết tật", "Kết quả"],
+        "stackable.stack_type": "normalized",
+        "graph.metrics": ["n"],
+        "series_settings": {
+          "Pass":        {"color": "#51cf66"},
+          "Distinction": {"color": "#339af0"},
+          "Fail":        {"color": "#ff6b6b"},
+          "Withdrawn":   {"color": "#868e96"}
+        }
+      },
+      "position": {"row": 15, "col": 0, "size_x": 12, "size_y": 7}
+    },
+
+    {
+      "type": "text",
+      "display": "text",
+      "text": "### 🟡 Insight #2 — Education + Age + Prior Attempts\n- **Trình độ học vấn càng cao → pass rate càng cao** (~20pt khác biệt).\n- **Age band 35-55**: pass rate cao hơn 0-35 vài điểm (sinh viên trưởng thành ổn định hơn).\n- **Prior attempts ↑ → pass rate ↓**: số lần thi trước càng nhiều, càng khó pass.",
+      "position": {"row": 22, "col": 0, "size_x": 24, "size_y": 3}
+    },
+    {
+      "name": "Education x Age Band Pass Rate",
+      "display": "bar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ds.age_band AS `Age band`, ds.highest_education AS `Trình độ`,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp JOIN Dim_Student ds ON fp.student_key = ds.student_key\nGROUP BY ds.age_band, ds.highest_education\nORDER BY ds.age_band, ds.highest_education",
+      "visualization_settings": {
+        "graph.dimensions": ["Age band", "Trình độ"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.x_axis.title_text": "Age Band",
+        "graph.y_axis.title_text": "Pass Rate (%)",
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 25, "col": 0, "size_x": 12, "size_y": 8}
+    },
+    {
+      "name": "Prior Attempts vs Pass Rate",
+      "display": "combo",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ds.num_of_prev_attempts AS `Prior attempts`,\n       COUNT(DISTINCT fp.student_key) AS num_students,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp JOIN Dim_Student ds ON fp.student_key = ds.student_key\nGROUP BY ds.num_of_prev_attempts ORDER BY ds.num_of_prev_attempts",
+      "visualization_settings": {
+        "graph.dimensions": ["Prior attempts"],
+        "graph.metrics": ["num_students", "pass_rate_pct"],
+        "graph.x_axis.title_text": "Số lần thi trước",
+        "series_settings": {
+          "num_students":  {"display": "bar",  "color": "#adb5bd"},
+          "pass_rate_pct": {"display": "line", "color": "#339af0"}
+        }
+      },
+      "position": {"row": 25, "col": 12, "size_x": 12, "size_y": 7}
+    },
+    {
+      "name": "Studied Credits Distribution by Result",
+      "display": "bar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT\n  CASE\n    WHEN ds.studied_credits < 60 THEN '< 60'\n    WHEN ds.studied_credits < 120 THEN '60 - 119'\n    WHEN ds.studied_credits < 180 THEN '120 - 179'\n    ELSE '>= 180'\n  END AS `Tải tín chỉ`,\n  fp.final_result AS `Kết quả`,\n  COUNT(*) AS n\nFROM Fact_Performance fp JOIN Dim_Student ds ON fp.student_key = ds.student_key\nGROUP BY `Tải tín chỉ`, fp.final_result\nORDER BY `Tải tín chỉ`, fp.final_result",
+      "visualization_settings": {
+        "graph.dimensions": ["Tải tín chỉ", "Kết quả"],
+        "stackable.stack_type": "normalized",
+        "graph.metrics": ["n"],
+        "series_settings": {
+          "Pass":        {"color": "#51cf66"},
+          "Distinction": {"color": "#339af0"},
+          "Fail":        {"color": "#ff6b6b"},
+          "Withdrawn":   {"color": "#868e96"}
+        }
+      },
+      "position": {"row": 33, "col": 0, "size_x": 12, "size_y": 7}
+    },
+
+    {
+      "type": "text",
+      "display": "text",
+      "text": "### 🟢 Recommended Actions\n\n1. **Targeted tutoring cho IMD 0-30%** — nhóm có pass rate thấp nhất, ~5,000 sinh viên\n2. **Pre-course program cho `No formal qual`** — tăng baseline education\n3. **Dedicated mentoring cho disability=Y** — giảm withdrawn rate\n4. **Cảnh báo sớm cho student có >= 2 prior attempts** — cohort rủi ro cao",
+      "position": {"row": 33, "col": 12, "size_x": 12, "size_y": 5}
+    }
+  ]
+}

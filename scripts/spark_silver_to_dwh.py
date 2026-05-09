@@ -10,13 +10,17 @@ Thứ tự load (bắt buộc theo FK dependency):
   Dim_Course    ← silver/student_info/
   Dim_Student   ← silver/student_info/
   Dim_Assessment← silver/assessments/
-  Fact_Performance ← student_info + student_assessment + assessments + vle_clicks
+  Fact_Performance ← student_assessment + assessments + student_info + vle_clicks
+
+Grain: student * course * assessment * presentation
+  Mỗi dòng = một assessment mà sinh viên đã nộp cho một khóa học trong một kỳ học
 
 Metrics tính trong script:
-  avg_score      = SUM(score * weight) / SUM(weight)
-  num_submissions= COUNT(submissions có score)
-  score_vs_avg   = avg_score - AVG(avg_score) OVER (PARTITION BY code_presentation)
-  risk_group     = Low (>=70) / Medium (50-69) / High (<50 hoặc NULL)
+  score         = điểm của assessment đó (hoặc NULL nếu không nộp)
+  total_clicks  = tổng VLE click trong khoá học (không phân biệt assessment)
+  score_vs_avg  = score - AVG(score) OVER (PARTITION BY id_assessment)
+  risk_group    = Low (>=70) / Medium (50-69) / High (<50) / Unknown (NULL score)
+  final_result  = từ student_info (Pass/Fail/Withdrawn/Distinction)
 
 Biến môi trường (inject từ Airflow):
     MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD
@@ -35,7 +39,6 @@ from pyspark.sql import functions as F
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-# ── Config ────────────────────────────────────────────────────────────────────
 MYSQL_HOST          = os.getenv("MYSQL_HOST", "mysql")
 MYSQL_PORT          = os.getenv("MYSQL_PORT", "3306")
 MYSQL_USER          = os.getenv("MYSQL_USER", "root")
@@ -61,8 +64,6 @@ WRITE_PROPS = {**JDBC_PROPS, "batchsize": "5000"}
 def silver_path(table: str) -> str:
     return f"s3a://{MINIO_BUCKET_SILVER}/{table}/"
 
-
-# ── Raw SQL helper ────────────────────────────────────────────────────────────
 
 def run_sql(statements: list) -> None:
     conn = mysql.connector.connect(
@@ -92,8 +93,6 @@ def truncate_dwh_tables() -> None:
     ])
     log.info("[TRUNC] Fact_Performance, Dim_Assessment, Dim_Student, Dim_Course")
 
-
-# ── Dim builders ──────────────────────────────────────────────────────────────
 
 def build_dim_course(spark: SparkSession) -> DataFrame:
     log.info("[BUILD] Dim_Course ← silver/courses/")
@@ -145,81 +144,79 @@ def build_dim_assessment(spark: SparkSession) -> DataFrame:
     return dim
 
 
-# ── Fact builder ──────────────────────────────────────────────────────────────
-
 def build_fact_performance(
     spark: SparkSession,
     dim_student: DataFrame,
     dim_course: DataFrame,
+    dim_assessment: DataFrame,
     dim_time: DataFrame,
 ) -> None:
-    log.info("[BUILD] Fact_Performance")
+    log.info("[BUILD] Fact_Performance (grain: student × course × assessment)")
 
+    # Base: student info + final_result
     base = spark.read.parquet(silver_path("student_info")).select(
         "id_student", "code_module", "code_presentation", "final_result"
     )
 
-    sa = spark.read.parquet(silver_path("student_assessment")).filter(
-        F.col("score").isNotNull()
+    # Score mỗi assessment (có thể NULL)
+    sa = spark.read.parquet(silver_path("student_assessment")).select(
+        "id_student", "id_assessment", "score"
     )
+
+    # Assessment metadata
     assessments = spark.read.parquet(silver_path("assessments")).select(
-        "id_assessment", "code_module", "code_presentation", "weight"
+        "id_assessment", "code_module", "code_presentation"
     )
     sa_meta = sa.join(assessments, "id_assessment")
 
-    score_agg = (
-        sa_meta
-        .groupBy("id_student", "code_module", "code_presentation")
-        .agg(
-            (F.sum(F.col("score") * F.col("weight")) / F.sum("weight")).alias("avg_score"),
-            F.count("*").cast("int").alias("num_submissions"),
-        )
-    )
-
+    # VLE clicks per student + course + presentation
     clicks = spark.read.parquet(silver_path("vle_clicks")).select(
         "id_student", "code_module", "code_presentation", "total_clicks"
     )
 
+    # Build base fact: join sa_meta + clicks + base (student_info)
     fact_base = (
-        base
-        .join(score_agg, ["id_student", "code_module", "code_presentation"], "left")
-        .join(clicks,    ["id_student", "code_module", "code_presentation"], "left")
-        .withColumn("num_submissions", F.coalesce(F.col("num_submissions"), F.lit(0)))
+        sa_meta
+        .join(base, ["id_student", "code_module", "code_presentation"], "left")
+        .join(clicks, ["id_student", "code_module", "code_presentation"], "left")
     )
 
-    window_pres = Window.partitionBy("code_presentation")
+    # Calculate score_vs_avg per assessment (score - avg(score) for this assessment)
+    window_assessment = Window.partitionBy("id_assessment")
     fact_base = fact_base.withColumn(
         "score_vs_avg",
-        F.col("avg_score") - F.avg("avg_score").over(window_pres),
+        F.col("score") - F.avg("score").over(window_assessment),
     )
 
+    # Risk group dựa trên điểm từng assignment
     fact_base = fact_base.withColumn(
         "risk_group",
-        F.when(F.col("avg_score") >= 70, "Low")
-         .when(F.col("avg_score") >= 50, "Medium")
+        F.when(F.col("score").isNull(), "Unknown")
+         .when(F.col("score") >= 70, "Low")
+         .when(F.col("score") >= 50, "Medium")
          .otherwise("High"),
     )
 
+    # Join với dimension tables
     fact = (
         fact_base
         .join(dim_student.select("id_student", "student_key"), "id_student")
         .join(dim_course.select("code_module", "code_presentation", "course_key"),
               ["code_module", "code_presentation"])
+        .join(dim_assessment.select("id_assessment", "assessment_key"), "id_assessment")
         .join(dim_time.select("code_presentation", "time_key"), "code_presentation")
         .select(
-            "student_key", "course_key", "time_key",
-            "avg_score", "total_clicks", "num_submissions",
-            "final_result", "score_vs_avg", "risk_group",
+            "student_key", "course_key", "assessment_key", "time_key",
+            "score", "total_clicks", "final_result",
+            "score_vs_avg", "risk_group",
         )
     )
 
     count = fact.count()
     log.info(f"[COUNT] Fact_Performance: {count:,} rows")
     fact.write.jdbc(url=JDBC_URL, table="Fact_Performance", mode="append", properties=WRITE_PROPS)
-    log.info(f"[DONE ] Fact_Performance: {count:,} rows")
+    log.info(f"[DONE ] Fact_Performance: {count:,} rows (grain: student × course × assessment)")
 
-
-# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     log.info(f"Spark master    : {SPARK_MASTER}")
@@ -249,9 +246,9 @@ def main():
 
         dim_course     = build_dim_course(spark)
         dim_student    = build_dim_student(spark)
-        _              = build_dim_assessment(spark)
+        dim_assessment = build_dim_assessment(spark)
 
-        build_fact_performance(spark, dim_student, dim_course, dim_time)
+        build_fact_performance(spark, dim_student, dim_course, dim_assessment, dim_time)
 
         log.info("=== spark_silver_to_dwh COMPLETED ===")
 

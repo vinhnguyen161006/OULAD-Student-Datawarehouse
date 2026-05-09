@@ -1,15 +1,4 @@
-"""
-DAG 03 — dwh_load
-==================
-Đọc Silver Parquet từ MinIO → build Star Schema → load vào MySQL student_dwh.
-
-Input  : Airflow Dataset s3://oulad-silver
-         (trigger tự động từ silver_processing — DAG 02)
-Output : Airflow Dataset mysql://student_dwh/fact_performance
-         (trigger tự động gold_dbt_run — DAG 04)
-
-Thành viên phụ trách: Vinh
-"""
+# DAG 03 — dwh_load: Silver Parquet → Star Schema → MySQL student_dwh
 
 from datetime import datetime
 
@@ -59,27 +48,10 @@ _ENV_VARS = {
     catchup=False,
     tags=["dwh", "pyspark", "minio", "mysql", "oulad"],
     doc_md="""
-## DAG 03 — DWH Load (Silver → Star Schema)
-
-**Mục đích**: Build Star Schema trong MySQL từ Silver Parquet.
-
-**Input dataset**: `s3://oulad-silver`
-→ Tự động trigger bởi `silver_processing` (DAG 02).
-
-**Output dataset**: `mysql://student_dwh/fact_performance`
-→ Tự động trigger `gold_dbt_run` (DAG 04).
-
-**Thứ tự load** (theo FK dependency):
-1. Dim_Time — đọc từ DB (pre-populated bởi init.sql)
-2. Dim_Course ← silver/student_info/
-3. Dim_Student ← silver/student_info/
-4. Dim_Assessment ← silver/assessments/
-5. Fact_Performance ← join student_info + student_assessment + vle_clicks
-
-**Metrics tính**:
-- `avg_score` = SUM(score × weight) / SUM(weight)
-- `score_vs_avg` = PySpark Window OVER (PARTITION BY code_presentation)
-- `risk_group` = Low (≥70) / Medium (50-69) / High (<50 hoặc NULL)
+**Input**: `s3://oulad-silver` → trigger bởi `silver_processing`
+**Output**: `mysql://student_dwh/fact_performance` → trigger `gold_dbt_run`
+**Job**: `scripts/spark_silver_to_dwh.py`
+**Load order**: Dim_Time → Dim_Course → Dim_Student → Dim_Assessment → Fact_Performance
     """,
 )
 def dwh_load_dag():
@@ -98,7 +70,6 @@ def dwh_load_dag():
 
     @task(outlets=[FACT_PERF_DATASET])
     def publish_fact_dataset():
-        """Publish dataset → trigger DAG 04 (gold_dbt_run) tự động."""
         pass
 
     load >> publish_fact_dataset()

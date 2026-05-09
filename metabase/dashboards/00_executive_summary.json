@@ -1,0 +1,179 @@
+{
+  "name": "00 — Executive Summary",
+  "description": "Báo cáo cấp điều hành: đi từ Big Picture → Vấn đề → Chẩn đoán → Đề xuất hành động.",
+  "cards": [
+    {
+      "type": "text",
+      "display": "heading",
+      "text": "🎓 OULAD Student Performance — Executive Summary",
+      "position": {"row": 0, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "Phân tích kết quả học tập của **28,785 sinh viên** Open University trên **7 module × 4 kỳ học**, dựa trên **173,912 submission**. Mục tiêu: nhận diện sớm sinh viên có nguy cơ trượt và đề xuất can thiệp định lượng được.",
+      "position": {"row": 1, "col": 0, "size_x": 24, "size_y": 2}
+    },
+
+    {
+      "name": "Tổng sinh viên",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT COUNT(DISTINCT id_student) AS total_students FROM Dim_Student",
+      "visualization_settings": {
+        "scalar.field": "total_students",
+        "column_settings": {
+          "[\"name\",\"total_students\"]": {"column_title": "Tổng sinh viên"}
+        }
+      },
+      "position": {"row": 3, "col": 0, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Pass rate tổng",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ROUND(AVG(CASE WHEN final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate FROM Fact_Performance",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"pass_rate\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 3, "col": 6, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Sinh viên rủi ro cao",
+      "display": "scalar",
+      "database": "OULAD Student Data Mart",
+      "query": "SELECT COUNT(DISTINCT id_student) AS at_risk_count FROM mart_at_risk_students",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"at_risk_count\"]": {"column_title": "Sinh viên High-Risk"}
+        }
+      },
+      "position": {"row": 3, "col": 12, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Distinction rate",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ROUND(AVG(CASE WHEN final_result='Distinction' THEN 100.0 ELSE 0.0 END), 1) AS dist_rate FROM Fact_Performance",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"dist_rate\"]": {"column_title": "Distinction Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 3, "col": 18, "size_x": 6, "size_y": 4}
+    },
+
+    {
+      "type": "text",
+      "display": "heading",
+      "text": "🔴 1. Vấn đề — Inequality theo Socio-economic & Module",
+      "position": {"row": 7, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "**Insight 1:** Sinh viên vùng nghèo nhất (IMD 0-10%) có pass rate **66.2%**, thấp hơn vùng giàu hơn (IMD 40-50%) tới **10.4 điểm phần trăm**. Bất bình đẳng socio-economic rõ rệt.\n\n**Insight 2:** Pass rate dao động lớn giữa các module — module dễ nhất cao hơn module khó nhất ~25 điểm. Có những môn cần xem lại cách dạy hoặc độ khó.",
+      "position": {"row": 8, "col": 0, "size_x": 24, "size_y": 3}
+    },
+    {
+      "name": "Pass rate theo IMD Band (vùng nghèo → vùng giàu)",
+      "display": "bar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ds.imd_band AS `IMD Band`,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp\nJOIN Dim_Student ds ON fp.student_key = ds.student_key\nWHERE ds.imd_band IS NOT NULL AND ds.imd_band <> ''\nGROUP BY ds.imd_band\nORDER BY ds.imd_band",
+      "visualization_settings": {
+        "graph.dimensions": ["IMD Band"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.x_axis.title_text": "IMD Band (vùng cư trú)",
+        "graph.y_axis.title_text": "Pass Rate (%)",
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%", "decimals": 1}
+        }
+      },
+      "position": {"row": 11, "col": 0, "size_x": 12, "size_y": 7}
+    },
+    {
+      "name": "Pass rate theo Module (xếp hạng)",
+      "display": "row",
+      "database": "OULAD Student DWH",
+      "query": "SELECT dc.code_module AS Module,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp\nJOIN Dim_Course dc ON fp.course_key = dc.course_key\nGROUP BY dc.code_module\nORDER BY pass_rate_pct DESC",
+      "visualization_settings": {
+        "graph.dimensions": ["Module"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.x_axis.title_text": "Pass Rate (%)",
+        "graph.y_axis.title_text": "Module",
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%", "decimals": 1}
+        }
+      },
+      "position": {"row": 11, "col": 12, "size_x": 12, "size_y": 7}
+    },
+
+    {
+      "type": "text",
+      "display": "heading",
+      "text": "🟡 2. Chẩn đoán — Đặc điểm sinh viên có rủi ro",
+      "position": {"row": 18, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "**Pattern phát hiện:**\n- **Trình độ học vấn cao → pass rate cao**: chênh lệch giữa nhóm No formal qual và HE Qualification là ~20 điểm.\n- **Region** có vai trò: vùng North dẫn đầu (~80%), vùng cuối bảng thấp hơn ~5-7 điểm.\n- **Disability**: nhóm khuyết tật có withdrawn rate cao gấp đôi.\n- **Prior attempts ↑ → pass rate ↓**: số lần thi trước càng nhiều, tỉ lệ pass càng giảm.",
+      "position": {"row": 19, "col": 0, "size_x": 24, "size_y": 4}
+    },
+    {
+      "name": "Pass rate theo Trình độ học vấn",
+      "display": "bar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ds.highest_education AS `Trình độ`,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct,\n       COUNT(DISTINCT fp.student_key) AS num_students\nFROM Fact_Performance fp\nJOIN Dim_Student ds ON fp.student_key = ds.student_key\nGROUP BY ds.highest_education\nORDER BY pass_rate_pct DESC",
+      "visualization_settings": {
+        "graph.dimensions": ["Trình độ"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 23, "col": 0, "size_x": 12, "size_y": 7}
+    },
+    {
+      "name": "Region Performance Top 13",
+      "display": "row",
+      "database": "OULAD Student DWH",
+      "query": "SELECT ds.region AS Region,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp\nJOIN Dim_Student ds ON fp.student_key = ds.student_key\nGROUP BY ds.region\nORDER BY pass_rate_pct DESC",
+      "visualization_settings": {
+        "graph.dimensions": ["Region"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 23, "col": 12, "size_x": 12, "size_y": 7}
+    },
+
+    {
+      "type": "text",
+      "display": "heading",
+      "text": "🟢 3. Đề xuất hành động (định lượng)",
+      "position": {"row": 30, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "### 💡 Action 1 — Targeted Tutoring cho IMD 0-30%\nNếu nâng pass rate của nhóm IMD 0-30% ngang IMD 50%+ qua chương trình tutoring sớm:\n→ **+520 sinh viên Pass / năm** (giả định 5,000 SV trong nhóm × +10pt).\n\n### 💡 Action 2 — Module Review cho 2 module yếu nhất\nReview lại curriculum + assessment difficulty của 2 module có pass rate < 50% — tiềm năng nâng tỉ lệ chung **+3-5pt**.\n\n### 💡 Action 3 — Early Warning System\n**8,521 sinh viên** đang ở danh sách high-risk. Ưu tiên can thiệp sớm cho top 100 (xem bảng dưới) — cohort có nhiều submission rủi ro nhất.\n\n### 💡 Action 4 — Disability Support\nPass rate nhóm disability=Y thấp hơn ~8pt. Cần tài nguyên hỗ trợ chuyên biệt.",
+      "position": {"row": 31, "col": 0, "size_x": 24, "size_y": 6}
+    },
+    {
+      "name": "Top 20 Sinh viên cần can thiệp NGAY (intervention candidates)",
+      "display": "table",
+      "database": "OULAD Student Data Mart",
+      "query": "SELECT\n  id_student AS `Mã SV`,\n  code_module AS Module,\n  code_presentation AS Kỳ,\n  highest_education AS `Trình độ`,\n  num_high_risk_submissions AS `Số lần High-Risk`,\n  ROUND(avg_score, 1) AS `Điểm TB`,\n  final_result AS `Kết quả`\nFROM mart_at_risk_students\nORDER BY num_high_risk_submissions DESC, avg_score ASC\nLIMIT 20",
+      "visualization_settings": {},
+      "position": {"row": 37, "col": 0, "size_x": 24, "size_y": 9}
+    }
+  ]
+}

@@ -1,15 +1,4 @@
-"""
-DAG 01 — bronze_ingest
-=======================
-Kiểm tra 7 file CSV OULAD đã có trong MinIO oulad-bronze chưa.
-Nếu đủ → publish Dataset để trigger DAG 02 (silver_processing).
-
-Input  : MinIO bucket oulad-bronze (upload bằng: make upload-data)
-Output : Airflow Dataset s3://oulad-bronze
-         → trigger tự động 02_silver_processing
-
-Thành viên phụ trách: Tú
-"""
+# DAG 01 — bronze_ingest: kiểm tra 7 CSV trong MinIO oulad-bronze → publish s3://oulad-bronze
 
 from datetime import datetime
 
@@ -36,18 +25,8 @@ EXPECTED_FILES = [
     catchup=False,
     tags=["bronze", "minio", "oulad"],
     doc_md="""
-## DAG 01 — Bronze Ingest
-
-**Mục đích**: Xác nhận 7 file CSV OULAD đã có trong MinIO `oulad-bronze`.
-
-**Chuẩn bị trước khi trigger**:
-```bash
-make setup-data   # tải CSV về data/raw/
-make upload-data  # upload lên MinIO oulad-bronze
-```
-
-**Output dataset**: `s3://oulad-bronze`
-→ Tự động trigger `silver_processing` (DAG 02) khi hoàn thành.
+**Input**: MinIO `oulad-bronze` (chạy `make upload-data` trước)
+**Output**: `s3://oulad-bronze` → trigger `silver_processing`
     """,
 )
 def bronze_ingest_dag():

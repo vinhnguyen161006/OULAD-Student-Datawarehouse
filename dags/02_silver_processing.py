@@ -1,15 +1,4 @@
-"""
-DAG 02 — silver_processing
-===========================
-Đọc 7 CSV từ MinIO Bronze → validate + clean → ghi Parquet vào MinIO Silver.
-
-Input  : Airflow Dataset s3://oulad-bronze
-         (trigger tự động từ bronze_ingest — DAG 01)
-Output : Airflow Dataset s3://oulad-silver
-         (trigger tự động dwh_load — DAG 03)
-
-Thành viên phụ trách: Tú
-"""
+# DAG 02 — silver_processing: Bronze CSV → validate + clean → Silver Parquet
 
 from datetime import datetime
 
@@ -56,29 +45,9 @@ _ENV_VARS = {
     catchup=False,
     tags=["silver", "pyspark", "minio", "oulad"],
     doc_md="""
-## DAG 02 — Silver Processing (Bronze → Silver Parquet)
-
-**Mục đích**: Validate + clean dữ liệu từ Bronze CSV → ghi Parquet vào MinIO Silver.
-
-**Input dataset**: `s3://oulad-bronze`
-→ Tự động trigger bởi `bronze_ingest` (DAG 01).
-
-**Output dataset**: `s3://oulad-silver`
-→ Tự động trigger `dwh_load` (DAG 03).
-
-**Validation rules**:
-- `code_presentation` ∈ {2013J, 2013B, 2014J, 2014B}
-- `score` ∈ [0, 100] hoặc NULL
-- `weight` >= 0
-- `id_student`, `id_assessment`, `id_site` NOT NULL
-
-**Silver paths**:
-- `s3a://oulad-silver/student_info/`
-- `s3a://oulad-silver/assessments/`
-- `s3a://oulad-silver/vle/`
-- `s3a://oulad-silver/student_registration/`
-- `s3a://oulad-silver/student_assessment/`
-- `s3a://oulad-silver/vle_clicks/`  ← SUM(sum_click) aggregated
+**Input**: `s3://oulad-bronze` → trigger bởi `bronze_ingest`
+**Output**: `s3://oulad-silver` → trigger `dwh_load`
+**Job**: `scripts/spark_bronze_to_silver.py`
     """,
 )
 def silver_processing_dag():
@@ -97,7 +66,6 @@ def silver_processing_dag():
 
     @task(outlets=[SILVER_DATASET])
     def publish_silver_dataset():
-        """Publish dataset → trigger DAG 03 (dwh_load) tự động."""
         pass
 
     process >> publish_silver_dataset()

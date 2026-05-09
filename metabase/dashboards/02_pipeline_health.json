@@ -1,0 +1,100 @@
+{
+  "name": "Pipeline Health",
+  "description": "Health monitoring cho ETL pipeline OULAD — từ student_dwh.monitoring_log.",
+  "cards": [
+    {
+      "type": "text",
+      "display": "heading",
+      "text": "🩺 Pipeline Health — ETL Reliability Monitor",
+      "position": {"row": 0, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "Mỗi lần pipeline chạy, **18 health checks** ghi vào `monitoring_log` (row counts, NULL rate, accepted values). Dashboard này theo dõi reliability theo thời gian — nếu fail count tăng đột biến, có drift trong source data hoặc bug trong ETL.",
+      "position": {"row": 1, "col": 0, "size_x": 24, "size_y": 2}
+    },
+    {
+      "name": "Total Checks Run",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT COUNT(*) AS total_checks FROM monitoring_log",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"total_checks\"]": {"column_title": "Tổng check"}
+        }
+      },
+      "position": {"row": 3, "col": 0, "size_x": 6, "size_y": 3}
+    },
+    {
+      "name": "Failures Last 7 Days",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT COUNT(*) AS recent_failures FROM monitoring_log\n   WHERE status IN ('FAIL','ERROR') AND checked_at > NOW() - INTERVAL 7 DAY",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"recent_failures\"]": {"column_title": "FAIL/ERROR (7 ngày)"}
+        }
+      },
+      "position": {"row": 3, "col": 6, "size_x": 6, "size_y": 3}
+    },
+    {
+      "name": "Status Distribution",
+      "display": "pie",
+      "database": "OULAD Student DWH",
+      "query": "SELECT status, COUNT(*) AS n FROM monitoring_log GROUP BY status",
+      "visualization_settings": {
+        "pie.metric": "n",
+        "pie.dimension": "status",
+        "pie.colors": {
+          "PASS":  "#51cf66",
+          "WARN":  "#fab005",
+          "FAIL":  "#ff6b6b",
+          "ERROR": "#c92a2a"
+        }
+      },
+      "position": {"row": 3, "col": 12, "size_x": 12, "size_y": 7}
+    },
+    {
+      "name": "Latest 20 Health Checks",
+      "display": "table",
+      "database": "OULAD Student DWH",
+      "query": "SELECT check_name AS `Tên check`, status AS Status, detail AS `Chi tiết`, checked_at AS `Thời điểm`\n   FROM monitoring_log ORDER BY checked_at DESC LIMIT 20",
+      "visualization_settings": {},
+      "position": {"row": 10, "col": 0, "size_x": 24, "size_y": 10}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "### 💡 Hành động khi thấy bất thường\n\n- **FAIL/ERROR > 0**: kiểm tra check name → drill xuống logs Airflow của DAG tương ứng.\n- **WARN tăng đột biến** (ví dụ NULL rate score > 25%): có thể source data hỏng hoặc ETL skip rows. Kiểm tra MinIO Silver count vs DWH count.\n- **Total Checks tăng nhưng Status không đa dạng**: pipeline đang chạy lặp nhưng có thể không có data mới — kiểm tra Airflow Datasets trigger.",
+      "position": {"row": 20, "col": 0, "size_x": 24, "size_y": 4}
+    },
+    {
+      "name": "Health Status Over Time",
+      "display": "line",
+      "database": "OULAD Student DWH",
+      "query": "SELECT DATE_FORMAT(checked_at, '%Y-%m-%d %H:00') AS hour_bucket, status, COUNT(*) AS n\nFROM monitoring_log\nGROUP BY hour_bucket, status\nORDER BY hour_bucket",
+      "visualization_settings": {
+        "graph.dimensions": ["hour_bucket", "status"],
+        "graph.metrics": ["n"],
+        "graph.x_axis.title_text": "Thời điểm chạy",
+        "graph.y_axis.title_text": "Số check",
+        "series_settings": {
+          "PASS":  {"color": "#51cf66"},
+          "WARN":  {"color": "#fab005"},
+          "FAIL":  {"color": "#ff6b6b"},
+          "ERROR": {"color": "#c92a2a"}
+        }
+      },
+      "position": {"row": 24, "col": 0, "size_x": 12, "size_y": 7}
+    },
+    {
+      "name": "Failure Leaderboard by Check",
+      "display": "table",
+      "database": "OULAD Student DWH",
+      "query": "SELECT check_name AS `Tên check`,\n       SUM(CASE WHEN status='PASS' THEN 1 ELSE 0 END) AS pass_count,\n       SUM(CASE WHEN status IN ('FAIL','ERROR') THEN 1 ELSE 0 END) AS fail_count,\n       SUM(CASE WHEN status='WARN' THEN 1 ELSE 0 END) AS warn_count,\n       COUNT(*) AS total_runs\nFROM monitoring_log\nGROUP BY check_name\nORDER BY fail_count DESC, total_runs DESC",
+      "visualization_settings": {},
+      "position": {"row": 24, "col": 12, "size_x": 12, "size_y": 7}
+    }
+  ]
+}

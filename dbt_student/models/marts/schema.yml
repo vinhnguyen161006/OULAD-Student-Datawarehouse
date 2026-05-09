@@ -1,0 +1,175 @@
+version: 2
+
+models:
+  # ============================================================
+  # Staging — denormalized fact joined với 4 dims
+  # ============================================================
+  - name: stg_fact_performance
+    description: "Staging view: denormalized fact joined với Dim_Student / Dim_Course / Dim_Assessment / Dim_Time."
+    columns:
+      - name: fact_id
+        description: Primary key từ Fact_Performance
+        tests:
+          - not_null
+          - unique
+      - name: id_student
+        description: Mã sinh viên (business key)
+        tests:
+          - not_null
+      - name: gender
+        tests:
+          - accepted_values:
+              values: ['M', 'F']
+      - name: code_module
+        tests:
+          - not_null
+      - name: code_presentation
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['2013J', '2013B', '2014J', '2014B']
+      - name: assessment_type
+        tests:
+          - accepted_values:
+              values: ['TMA', 'CMA', 'Exam']
+      - name: final_result
+        tests:
+          - accepted_values:
+              values: ['Pass', 'Fail', 'Withdrawn', 'Distinction']
+      - name: risk_group
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Low', 'Medium', 'High', 'Unknown']
+
+  # ============================================================
+  # Mart 1 — Result distribution by module + presentation
+  # ============================================================
+  - name: mart_result_by_module
+    description: "Phân bố Pass / Fail / Distinction / Withdrawn theo module + kỳ học."
+    columns:
+      - name: code_module
+        tests:
+          - not_null
+      - name: code_presentation
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['2013J', '2013B', '2014J', '2014B']
+      - name: final_result
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Pass', 'Fail', 'Withdrawn', 'Distinction']
+      - name: num_students
+        tests:
+          - not_null
+      - name: num_submissions
+        tests:
+          - not_null
+      - name: pct_submissions
+        description: Tỉ lệ % của final_result trong tổng số dòng module + presentation.
+        tests:
+          - not_null
+
+  # ============================================================
+  # Mart 2 — Score statistics by gender x assessment type
+  # ============================================================
+  - name: mart_score_by_gender
+    description: "Thống kê điểm theo giới tính và loại bài đánh giá."
+    columns:
+      - name: gender
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['M', 'F']
+      - name: assessment_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['TMA', 'CMA', 'Exam']
+      - name: code_presentation
+        tests:
+          - accepted_values:
+              values: ['2013J', '2013B', '2014J', '2014B']
+      - name: avg_score
+        tests:
+          - not_null
+      - name: num_students
+        tests:
+          - not_null
+
+  # ============================================================
+  # Mart 3 — Education level impact
+  # ============================================================
+  - name: mart_education_impact
+    description: "Tác động trình độ học vấn (highest_education của sinh viên) lên kết quả."
+    columns:
+      - name: highest_education
+        tests:
+          - not_null
+      - name: assessment_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['TMA', 'CMA', 'Exam']
+      - name: code_presentation
+        tests:
+          - accepted_values:
+              values: ['2013J', '2013B', '2014J', '2014B']
+      - name: pass_rate_pct
+        tests:
+          - not_null
+      - name: distinction_rate_pct
+        tests:
+          - not_null
+      - name: withdrawn_rate_pct
+        tests:
+          - not_null
+
+  # ============================================================
+  # Mart 4 — VLE engagement vs performance
+  # ============================================================
+  - name: mart_vle_engagement
+    description: "Tương quan giữa lượng click VLE và kết quả học theo nhóm rủi ro."
+    columns:
+      - name: risk_group
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Low', 'Medium', 'High', 'Unknown']
+      - name: code_presentation
+        tests:
+          - accepted_values:
+              values: ['2013J', '2013B', '2014J', '2014B']
+      - name: avg_total_clicks
+        tests:
+          - not_null
+      - name: avg_score
+        tests:
+          - not_null
+
+  # ============================================================
+  # Mart 5 — At-risk students leaderboard
+  # ============================================================
+  - name: mart_at_risk_students
+    description: "Danh sách sinh viên có >=1 submission High Risk."
+    columns:
+      - name: id_student
+        tests:
+          - not_null
+      - name: code_module
+        tests:
+          - not_null
+      - name: code_presentation
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['2013J', '2013B', '2014J', '2014B']
+      - name: num_high_risk_submissions
+        tests:
+          - not_null
+      - name: final_result
+        tests:
+          - accepted_values:
+              values: ['Pass', 'Fail', 'Withdrawn', 'Distinction']

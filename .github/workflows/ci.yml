@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # Lint Python (DAGs + scripts)
+  # ============================================================
+  python-lint:
+    name: Python lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff==0.6.9
+
+      - name: Ruff check
+        run: ruff check dags scripts
+
+  # ============================================================
+  # dbt parse + compile (offline — không cần DB)
+  # ============================================================
+  dbt-validate:
+    name: dbt parse + compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt-mysql
+        run: |
+          pip install --upgrade pip
+          pip install dbt-mysql==1.7.0 mysqlclient==2.2.4
+
+      - name: dbt parse
+        env:
+          DBT_HOST: dummy
+          DBT_USER: dummy
+          DBT_PASSWORD: dummy
+        run: |
+          dbt parse \
+            --project-dir dbt_student \
+            --profiles-dir dbt_student
+
+  # ============================================================
+  # Airflow DAG validation (import + cycle check)
+  # ============================================================
+  airflow-dags:
+    name: Airflow DAG validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Airflow
+        run: |
+          pip install --upgrade pip
+          pip install "apache-airflow==2.9.2" \
+            "apache-airflow-providers-apache-spark==4.9.0" \
+            "apache-airflow-providers-mysql==5.6.1" \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.2/constraints-3.11.txt"
+
+      - name: Import all DAGs (catch syntax + cycle errors)
+        run: |
+          export AIRFLOW_HOME=$PWD/.airflow
+          mkdir -p $AIRFLOW_HOME
+          airflow db migrate
+          AIRFLOW__CORE__DAGS_FOLDER=$PWD/dags airflow dags list
+          # Fail if any DAG has import errors
+          AIRFLOW__CORE__DAGS_FOLDER=$PWD/dags airflow dags list-import-errors > /tmp/errors.txt
+          if [ -s /tmp/errors.txt ] && grep -q . /tmp/errors.txt; then
+            echo "DAG import errors found:"
+            cat /tmp/errors.txt
+            exit 1
+          fi

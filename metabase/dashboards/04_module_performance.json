@@ -1,0 +1,134 @@
+{
+  "name": "Module Performance Matrix",
+  "description": "So sánh hiệu năng giữa các module và kỳ học (pass rate, độ dài, VLE engagement).",
+  "cards": [
+    {
+      "type": "text",
+      "display": "heading",
+      "text": "📚 Module Performance Matrix — So sánh chéo các môn",
+      "position": {"row": 0, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "Phân tích **7 module × 4 kỳ** để trả lời: module nào hiệu quả nhất? Có tương quan giữa độ dài khóa với pass rate? VLE click ảnh hưởng thế nào? Dùng để **review curriculum** + **resource allocation**.",
+      "position": {"row": 1, "col": 0, "size_x": 24, "size_y": 2}
+    },
+
+    {
+      "name": "Best Performing Module",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT CONCAT(dc.code_module, ' (',\n              ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1),\n              '% pass)') AS best_module\nFROM Fact_Performance fp JOIN Dim_Course dc ON fp.course_key = dc.course_key\nGROUP BY dc.code_module\nORDER BY AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 1.0 ELSE 0.0 END) DESC\nLIMIT 1",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"best_module\"]": {"column_title": "🏆 Module tốt nhất"}
+        }
+      },
+      "position": {"row": 3, "col": 0, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Most Challenging Module",
+      "display": "scalar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT CONCAT(dc.code_module, ' (',\n              ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1),\n              '% pass)') AS worst_module\nFROM Fact_Performance fp JOIN Dim_Course dc ON fp.course_key = dc.course_key\nGROUP BY dc.code_module\nORDER BY AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 1.0 ELSE 0.0 END) ASC\nLIMIT 1",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"worst_module\"]": {"column_title": "⚠️ Module khó nhất"}
+        }
+      },
+      "position": {"row": 3, "col": 6, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Module Pass Rate Ranking",
+      "display": "row",
+      "database": "OULAD Student DWH",
+      "query": "SELECT dc.code_module AS Module,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp JOIN Dim_Course dc ON fp.course_key = dc.course_key\nGROUP BY dc.code_module ORDER BY pass_rate_pct DESC",
+      "visualization_settings": {
+        "graph.dimensions": ["Module"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.x_axis.title_text": "Pass Rate (%)",
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 3, "col": 12, "size_x": 12, "size_y": 8}
+    },
+    {
+      "name": "Module x Presentation Pass Rate",
+      "display": "bar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT dc.code_module AS Module, dc.code_presentation AS Kỳ,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp JOIN Dim_Course dc ON fp.course_key = dc.course_key\nGROUP BY dc.code_module, dc.code_presentation\nORDER BY dc.code_module, dc.code_presentation",
+      "visualization_settings": {
+        "graph.dimensions": ["Module", "Kỳ"],
+        "graph.metrics": ["pass_rate_pct"],
+        "graph.x_axis.title_text": "Module",
+        "graph.y_axis.title_text": "Pass Rate (%)",
+        "column_settings": {
+          "[\"name\",\"pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 7, "col": 0, "size_x": 12, "size_y": 8}
+    },
+    {
+      "name": "Score by Assessment Type per Module",
+      "display": "bar",
+      "database": "OULAD Student DWH",
+      "query": "SELECT dc.code_module AS Module, da.assessment_type AS `Loại bài`,\n       ROUND(AVG(fp.score), 1) AS avg_score\nFROM Fact_Performance fp\nJOIN Dim_Course dc ON fp.course_key = dc.course_key\nJOIN Dim_Assessment da ON fp.assessment_key = da.assessment_key\nWHERE fp.score IS NOT NULL\nGROUP BY dc.code_module, da.assessment_type\nORDER BY dc.code_module, da.assessment_type",
+      "visualization_settings": {
+        "graph.dimensions": ["Module", "Loại bài"],
+        "graph.metrics": ["avg_score"],
+        "graph.x_axis.title_text": "Module",
+        "graph.y_axis.title_text": "Điểm trung bình"
+      },
+      "position": {"row": 11, "col": 12, "size_x": 12, "size_y": 8}
+    },
+
+    {
+      "type": "text",
+      "display": "text",
+      "text": "### 💡 Insight #1 — Module length không tương quan thuận với pass rate\nKhông phải module dài hơn = pass rate cao hơn. Có module 240 ngày pass rate vẫn thấp. **Yếu tố quyết định không phải thời lượng** — có thể là chất lượng nội dung, density assessment, support sinh viên.",
+      "position": {"row": 15, "col": 0, "size_x": 12, "size_y": 3}
+    },
+    {
+      "name": "Module Length vs Pass Rate",
+      "display": "combo",
+      "database": "OULAD Student DWH",
+      "query": "SELECT dc.code_module AS Module,\n       ROUND(AVG(dc.module_presentation_length), 0) AS avg_length_days,\n       ROUND(AVG(CASE WHEN fp.final_result IN ('Pass','Distinction') THEN 100.0 ELSE 0.0 END), 1) AS pass_rate_pct\nFROM Fact_Performance fp JOIN Dim_Course dc ON fp.course_key = dc.course_key\nGROUP BY dc.code_module ORDER BY avg_length_days",
+      "visualization_settings": {
+        "graph.dimensions": ["Module"],
+        "graph.metrics": ["avg_length_days", "pass_rate_pct"],
+        "graph.x_axis.title_text": "Module",
+        "series_settings": {
+          "avg_length_days":  {"display": "bar",  "color": "#adb5bd"},
+          "pass_rate_pct":    {"display": "line", "color": "#339af0"}
+        }
+      },
+      "position": {"row": 18, "col": 0, "size_x": 12, "size_y": 8}
+    },
+    {
+      "name": "VLE Click Intensity per Module",
+      "display": "row",
+      "database": "OULAD Student DWH",
+      "query": "SELECT dc.code_module AS Module,\n       ROUND(AVG(fp.total_clicks), 0) AS avg_clicks_per_record\nFROM Fact_Performance fp JOIN Dim_Course dc ON fp.course_key = dc.course_key\nGROUP BY dc.code_module ORDER BY avg_clicks_per_record DESC",
+      "visualization_settings": {
+        "graph.dimensions": ["Module"],
+        "graph.metrics": ["avg_clicks_per_record"],
+        "graph.x_axis.title_text": "Trung bình click VLE / SV",
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"avg_clicks_per_record\"]": {"column_title": "Avg Clicks"}
+        }
+      },
+      "position": {"row": 19, "col": 12, "size_x": 12, "size_y": 7}
+    },
+
+    {
+      "type": "text",
+      "display": "text",
+      "text": "### 🟢 Recommended Actions\n\n1. **Curriculum review cho 2 module có pass rate < 50%** — workshop với giảng viên + sample content audit\n2. **Best practice sharing** — module top performer chia sẻ pedagogy với module yếu\n3. **VLE engagement target**: module có click thấp cần activity hấp dẫn hơn (forum, gamification)\n4. **Theo dõi inter-presentation variance** — nếu 1 module pass rate dao động lớn giữa các kỳ → có yếu tố ngoài (giảng viên, cohort khác nhau)",
+      "position": {"row": 26, "col": 0, "size_x": 24, "size_y": 5}
+    }
+  ]
+}

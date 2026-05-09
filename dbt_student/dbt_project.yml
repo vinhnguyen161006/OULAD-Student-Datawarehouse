@@ -24,7 +24,5 @@ models:
   student_dbt:
     staging:
       +materialized: view
-      +schema: student_dwh
     marts:
       +materialized: table
-      +schema: student_data_mart

@@ -32,7 +32,6 @@ from pyspark.sql.types import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-# ── Config ────────────────────────────────────────────────────────────────────
 MINIO_ENDPOINT      = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS_KEY    = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY    = os.getenv("MINIO_SECRET_KEY", "minioadmin")
@@ -41,8 +40,6 @@ MINIO_BUCKET_SILVER = os.getenv("MINIO_BUCKET_SILVER", "oulad-silver")
 SPARK_MASTER        = os.getenv("SPARK_MASTER", "local[*]")
 
 VALID_PRESENTATIONS = {"2013J", "2013B", "2014J", "2014B"}
-
-# ── Schemas ───────────────────────────────────────────────────────────────────
 
 SCHEMA_COURSES = StructType([
     StructField("code_module",                StringType(),  True),
@@ -157,12 +154,10 @@ def main():
     spark.sparkContext.setLogLevel("WARN")
 
     try:
-        # ── courses ──────────────────────────────────────────────────────────
         df = read_csv(spark, "courses.csv", SCHEMA_COURSES)
         df = df.filter(F.col("code_module").isNotNull())
         write_silver(df, "courses")
 
-        # ── student_info ─────────────────────────────────────────────────────
         df = read_csv(spark, "studentInfo.csv", SCHEMA_STUDENT_INFO)
         df = df.filter(
             F.col("id_student").isNotNull() &
@@ -170,7 +165,6 @@ def main():
         )
         write_silver(df, "student_info")
 
-        # ── assessments ──────────────────────────────────────────────────────
         df = read_csv(spark, "assessments.csv", SCHEMA_ASSESSMENTS)
         df = df.filter(
             F.col("id_assessment").isNotNull() &
@@ -178,12 +172,10 @@ def main():
         )
         write_silver(df, "assessments")
 
-        # ── vle ──────────────────────────────────────────────────────────────
         df = read_csv(spark, "vle.csv", SCHEMA_VLE)
         df = df.filter(F.col("id_site").isNotNull())
         write_silver(df, "vle")
 
-        # ── student_registration ──────────────────────────────────────────────
         df = read_csv(spark, "studentRegistration.csv", SCHEMA_STUDENT_REGISTRATION)
         df = df.filter(
             F.col("id_student").isNotNull() &
@@ -191,7 +183,6 @@ def main():
         )
         write_silver(df, "student_registration")
 
-        # ── student_assessment ────────────────────────────────────────────────
         df = read_csv(spark, "studentAssessment.csv", SCHEMA_STUDENT_ASSESSMENT)
         df = df.filter(
             F.col("id_assessment").isNotNull() &
@@ -200,7 +191,7 @@ def main():
         )
         write_silver(df, "student_assessment")
 
-        # ── vle_clicks — aggregate từ studentVle.csv (~10M rows) ─────────────
+        # Aggregate VLE clicks: SUM(sum_click) GROUP BY (id_student, code_module, code_presentation)
         log.info("[READ ] studentVle.csv (~10M rows)")
         df_vle = read_csv(spark, "studentVle.csv", SCHEMA_STUDENT_VLE)
         df_clicks = (

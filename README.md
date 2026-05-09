@@ -1,182 +1,142 @@
-# CLAUDE.md — Student Data Warehouse Project
+# OULAD Student Data Warehouse
 
-## Tổng quan dự án
-
-Kho dữ liệu phân tích kết quả học tập sinh viên Đại học Mở (OULAD dataset) theo kiến trúc **ETL 4 lớp (Bronze → Silver → DWH → Mart)**. Orchestration bằng Apache Airflow, transform bằng PySpark, object storage bằng MinIO, warehouse trên MySQL, mart modeling bằng dbt, dashboard bằng Metabase — toàn bộ chạy local qua Docker Compose.
+End-to-end batch data platform for the Open University Learning Analytics Dataset (OULAD).
 
 ## Tech stack
 
-| Lớp | Công nghệ | Vai trò |
-|-----|-----------|---------|
-| Orchestration | Apache Airflow | Điều phối pipeline, event-driven qua Airflow Datasets |
-| Processing | PySpark | ETL — đọc CSV, validate, transform, load |
-| Object Storage | MinIO | Bronze (CSV) + Silver (Parquet) data lake |
-| Warehouse | MySQL 8.0 | DWH (`student_dwh`) + Marts (`student_data_mart`) |
-| Mart Modeling | dbt | Build Gold models, chạy data tests |
-| BI | Metabase | Dashboard kết nối vào mart |
-| Runtime | Docker Compose | Chạy toàn bộ stack local |
-| Source control | Git + GitHub | Quản lý mã nguồn |
+- Apache Airflow: orchestration (event-driven via Datasets)
+- MinIO: S3-compatible data lake
+- PySpark: Bronze → Silver + Silver → DWH ETL
+- MySQL 8.0: warehouse (DWH + marts)
+- dbt: marts modeling and tests
+- Metabase: BI dashboards (dashboards-as-code)
+- Docker Compose: local runtime
 
-## Kiến trúc ETL
-
-```
-[7 file CSV OULAD]
-        │ make upload-data
-        ▼
-  ┌─────────────┐
-  │   BRONZE    │  MinIO: oulad-bronze (CSV gốc)
-  └──────┬──────┘
-         │ DAG 02 — spark_bronze_to_silver.py
-         ▼
-  ┌─────────────┐
-  │   SILVER    │  MinIO: oulad-silver (Parquet, validated)
-  └──────┬──────┘
-         │ DAG 03 — spark_silver_to_dwh.py
-         ▼
-  ┌─────────────┐
-  │     DWH     │  MySQL: student_dwh
-  │ (Star Schema)│  Dim_* + Fact_Performance
-  └──────┬──────┘
-         │ DAG 04 — dbt build
-         ▼
-  ┌─────────────┐
-  │    MARTS    │  MySQL: student_data_mart
-  │  (dbt Gold) │  mart_* aggregations + tests
-  └──────┬──────┘
-         │ DAG 05 — monitoring
-         ▼
-   Health checks + monitoring_log
-         │
-         ▼
-   Metabase Dashboards
+```mermaid
+flowchart LR
+    CSV[("7 CSV<br/>OULAD")] -->|01 bronze_ingest| BRONZE[("oulad-bronze<br/>MinIO")]
+    BRONZE -->|02 silver_processing| SILVER[("oulad-silver<br/>Parquet")]
+    SILVER -->|03 dwh_load| DWH[("student_dwh<br/>Star Schema")]
+    DWH -->|04 gold_dbt_run| MART[("student_data_mart")]
+    MART -->|05 monitoring| LOG[("monitoring_log")]
+    MART --> BI[Metabase]
+    LOG --> BI
 ```
 
-## Cấu trúc thư mục
+## Architecture summary
 
-```
-Student-Data-Warehouse/
-├── .github/
-├── dags/
-│   ├── 01_bronze_ingest.py      # Kiểm tra CSV đủ trong MinIO Bronze → publish dataset
-│   ├── 02_silver_processing.py  # Bronze CSV → Silver Parquet (validate + clean)
-│   ├── 03_dwh_load.py           # Silver Parquet → MySQL Dim_* + Fact_Performance
-│   ├── 04_gold_dbt_run.py       # dbt build + test → student_data_mart
-│   └── 05_monitoring.py         # Health checks + monitoring_log
-├── data/
-│   └── raw/                     # 7 file CSV OULAD gốc (gitignored, tải bằng make setup-data)
-├── dbt_student/
-│   ├── models/
-│   │   ├── staging/
-│   │   └── marts/
-│   ├── tests/
-│   ├── dbt_project.yml
-│   └── profiles.yml
-├── docker/
-│   ├── airflow/
-│   ├── spark/
-│   └── mysql/                   # init.sql — DWH schema + monitoring_log
-├── docs/
-├── scripts/
-│   ├── upload_to_minio.py       # Upload CSV → MinIO Bronze
-│   ├── spark_bronze_to_silver.py# Bronze CSV → Silver Parquet
-│   ├── spark_silver_to_dwh.py   # Silver Parquet → MySQL DWH
-│   └── spark_monitoring.py      # Quality checks
-├── download_data.ps1
-├── .env
-├── .gitignore
-├── docker-compose.yml
-├── Makefile
-└── README.md
+1. Bronze ingest validates 7 OULAD CSV files in MinIO `oulad-bronze` bucket.
+2. Silver processing transforms and validates CSV, writes Parquet to `s3://oulad-silver/`.
+3. DWH load builds star schema in `student_dwh` (Dim_* + Fact_Performance, 173,912 rows).
+4. dbt builds marts in `student_data_mart` and runs 72 tests.
+5. Monitoring DAG runs 18 PySpark health checks and writes to `monitoring_log`.
+
+Pipeline orchestration is event-driven with Airflow Datasets for cross-DAG dependencies.
+
+## Project structure
+
+- `dags/`: Airflow DAGs (5 stages)
+- `scripts/`: PySpark ETL jobs + Metabase setup/export
+- `dbt_student/`: dbt project (1 staging + 5 marts)
+- `docker/`: custom Airflow/Spark images + MySQL init schema
+- `metabase/dashboards/`: 5 dashboard JSONs (version-controlled)
+- `docs/`: dashboard screenshot guides
+
+## Quick start
+
+1. Create `.env` from sample:
+
+```bash
+cp .env.example .env
 ```
 
-## Pipeline — 5 DAGs (event-driven)
+2. Download OULAD dataset:
 
-```
-01_bronze_ingest
-  ──s3://oulad-bronze──▶ 02_silver_processing
-    ──s3://oulad-silver──▶ 03_dwh_load
-      ──mysql://student_dwh/fact_performance──▶ 04_gold_dbt_run
-        ──mysql://student_data_mart/──▶ 05_monitoring
+```bash
+make setup-data
 ```
 
-### DAG 01 — `01_bronze_ingest.py`
-- Kiểm tra 7 CSV files có đủ trong MinIO `oulad-bronze` chưa
-- Publish Dataset: `s3://oulad-bronze`
+3. Bootstrap services, initialize schema, run pipeline, setup dashboards:
 
-### DAG 02 — `02_silver_processing.py`
-- Trigger khi `s3://oulad-bronze` available
-- PySpark đọc Bronze CSV → validate → ghi Silver Parquet vào `oulad-silver/`
-- Output: `student_info/`, `assessments/`, `vle/`, `student_registration/`, `student_assessment/`, `vle_clicks/`
-- Publish Dataset: `s3://oulad-silver`
+```bash
+make all
+```
 
-### DAG 03 — `03_dwh_load.py`
-- Trigger khi `s3://oulad-silver` available
-- PySpark đọc Silver Parquet → build Dim_* + Fact_Performance → load MySQL
-- Publish Dataset: `mysql://student_dwh/fact_performance`
+4. Open services:
 
-### DAG 04 — `04_gold_dbt_run.py`
-- Trigger khi `mysql://student_dwh/fact_performance` available
-- Chạy `dbt build` → student_data_mart
-- Publish Dataset: `mysql://student_data_mart/`
+- Airflow: http://localhost:8080 (`admin` / `admin`)
+- Metabase: http://localhost:3000 (`admin@oulad.local` / `oulad12345`)
+- MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`)
+- MySQL: `localhost:3307` (`root` / `rootpassword`)
 
-### DAG 05 — `05_monitoring.py`
-- Trigger khi `mysql://student_data_mart/` available
-- Kiểm tra row counts, NULL rates, 4 kỳ học
-- Ghi kết quả vào `monitoring_log`
+## DAGs (current IDs)
 
-## Mô hình dữ liệu
+- `bronze_ingest`: validate 7 CSV files exist in MinIO bronze bucket
+- `silver_processing`: bronze CSV → silver Parquet (PySpark validate + clean)
+- `dwh_load`: silver Parquet → MySQL star schema (PySpark JDBC)
+- `gold_dbt_run`: dbt build + test marts
+- `monitoring`: PySpark health checks → `monitoring_log`
 
-### Silver layer — MinIO oulad-silver (Parquet)
+## Recommended run flow
 
-| Path | Nguồn | Mô tả |
-|------|-------|-------|
-| `student_info/` | studentInfo.csv | Validated, code_presentation checked |
-| `assessments/` | assessments.csv | weight >= 0 |
-| `vle/` | vle.csv | id_site NOT NULL |
-| `student_registration/` | studentRegistration.csv | — |
-| `student_assessment/` | studentAssessment.csv | score 0-100 hoặc NULL |
-| `vle_clicks/` | studentVle.csv | SUM(sum_click) GROUP BY id_student+module+presentation |
+1. Unpause and trigger pipeline:
 
-### DWH — Star Schema trong `student_dwh`
+```bash
+make trigger-pipeline
+```
 
-**Dim_Student** — id_student, gender, region, highest_education, imd_band, age_band, disability, num_of_prev_attempts, studied_credits
+`bronze_ingest` triggers the downstream chain (silver → dwh → dbt → monitoring) via Airflow Datasets.
 
-**Dim_Course** — code_module, code_presentation, module_presentation_length
+## Useful commands
 
-**Dim_Time** — code_presentation, year, semester_type, presentation_label *(4 bản ghi cố định)*
+```bash
+make help
+make up
+make down
+make logs
+make airflow-logs
+make dbt-run
+make dbt-test
+make monitoring
+make metabase-setup
+make metabase-export
+make mysql-shell
+```
 
-**Dim_Assessment** — id_assessment, code_module, assessment_type, weight, day_due
+## Dashboards (Metabase)
 
-**Fact_Performance** *(grain: sinh viên × course presentation)*
-- avg_score, total_clicks, num_submissions, final_result, score_vs_avg, risk_group
+5 dashboards version-controlled in `metabase/dashboards/`. Auto re-import via `make metabase-setup` (idempotent).
 
-### student_data_mart — dbt models (Gold)
+- `00 Executive Summary`: KPIs → problem → diagnosis → quantified action items
+- `01 Student Performance`: KPI + result distribution + at-risk leaderboard
+- `02 Pipeline Health`: health checks + status trend + failure leaderboard
+- `03 Demographics & Success Factors`: funnel + IMD/region/disability impact + recommendations
+- `04 Module Performance Matrix`: module ranking + length vs pass rate + curriculum review
 
-| Model | Mô tả |
-|-------|-------|
-| `mart_result_by_module` | Phân bố kết quả theo module + kỳ học |
-| `mart_score_by_gender` | Điểm trung bình theo giới tính |
-| `mart_education_impact` | Tác động trình độ học vấn phụ huynh |
-| `mart_vle_engagement` | Tương quan click rate vs avg_score |
-| `mart_at_risk_students` | Danh sách sinh viên High Risk |
+Dashboard screenshot guide: `docs/screenshots/README.md`.
 
-## Kết nối dịch vụ (Docker Compose defaults)
+## Historical / re-import
 
-| Dịch vụ | Host:Port | Credential |
-|---------|-----------|------------|
-| Airflow UI | localhost:8080 | admin / admin |
-| MySQL | localhost:3306 | root / rootpassword |
-| MinIO Console | localhost:9001 | minioadmin / minioadmin |
-| MinIO API | localhost:9000 | minioadmin / minioadmin |
-| Metabase | localhost:3000 | — (setup lần đầu) |
-| Spark Master UI | localhost:8081 | — |
+Snapshot dashboards after manual edits in Metabase UI:
 
-## Phân công
+```bash
+make metabase-export
+git commit metabase/dashboards/ -m "tweak dashboards"
+```
 
-| Thành viên | Phụ trách | File chính |
-|-----------|-----------|------------|
-| Tùng | Docker Compose, infrastructure, schema init | `docker-compose.yml`, `docker/mysql/init.sql`, `Makefile` |
-| Tú | DAG 01 Bronze + DAG 02 Silver processing | `dags/01_bronze_ingest.py`, `dags/02_silver_processing.py`, `scripts/spark_bronze_to_silver.py` |
-| Vinh | DAG 03 DWH load | `dags/03_dwh_load.py`, `scripts/spark_silver_to_dwh.py` |
-| Quang & Đức | DAG 04 dbt Marts | `dags/04_gold_dbt_run.py`, `dbt_student/models/` |
-| Long | DAG 05 Monitoring + Metabase + docs | `dags/05_monitoring.py`, `scripts/spark_monitoring.py`, `docs/` |
+Re-create after volume reset:
+
+```bash
+make metabase-setup
+```
+
+## Dataset
+
+[Open University Learning Analytics Dataset (OULAD)](https://analyse.kmi.open.ac.uk/open_dataset) — 7 CSV, ~32K students, 4 presentations (2013J/B, 2014J/B), 7 modules, ~10M VLE click events.
+
+## Notes
+
+- Schema, indexes and partitions initialized from `docker/mysql/init.sql`.
+- Composite indexes on `Fact_Performance(risk_group, final_result)` reduce mart scan ~86%.
+- `monitoring_log` partitioned by quarter (RANGE on `checked_at`).
+- For production, use versioned migrations and managed secrets.

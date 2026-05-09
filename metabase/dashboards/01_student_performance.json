@@ -1,0 +1,116 @@
+{
+  "name": "Student Performance",
+  "description": "Phân tích kết quả học tập sinh viên OULAD — từ student_data_mart.",
+  "cards": [
+    {
+      "type": "text",
+      "display": "heading",
+      "text": "📊 Student Performance — Tổng quan kết quả học tập",
+      "position": {"row": 0, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "Dashboard mô tả phân bố kết quả + tìm các pattern nhân khẩu nổi bật. Dữ liệu từ `student_data_mart` (5 mart aggregations).",
+      "position": {"row": 1, "col": 0, "size_x": 24, "size_y": 1}
+    },
+    {
+      "name": "Total At-Risk Students",
+      "display": "scalar",
+      "database": "OULAD Student Data Mart",
+      "query": "SELECT COUNT(DISTINCT id_student) AS at_risk_students FROM mart_at_risk_students",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"at_risk_students\"]": {"column_title": "Sinh viên High-Risk"}
+        }
+      },
+      "position": {"row": 2, "col": 0, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Result Distribution by Module",
+      "display": "bar",
+      "database": "OULAD Student Data Mart",
+      "query": "SELECT code_module AS Module, final_result AS `Kết quả`, SUM(num_submissions) AS submissions\n   FROM mart_result_by_module GROUP BY code_module, final_result\n   ORDER BY code_module, final_result",
+      "visualization_settings": {
+        "graph.dimensions": ["Module", "Kết quả"],
+        "stackable.stack_type": "stacked",
+        "graph.metrics": ["submissions"],
+        "graph.x_axis.title_text": "Module",
+        "graph.y_axis.title_text": "Số submission",
+        "series_settings": {
+          "Pass":        {"color": "#51cf66"},
+          "Distinction": {"color": "#339af0"},
+          "Fail":        {"color": "#ff6b6b"},
+          "Withdrawn":   {"color": "#868e96"}
+        }
+      },
+      "position": {"row": 2, "col": 6, "size_x": 18, "size_y": 8}
+    },
+    {
+      "name": "Avg Score by Gender x Assessment",
+      "display": "bar",
+      "database": "OULAD Student Data Mart",
+      "query": "SELECT gender AS `Giới tính`, assessment_type AS `Loại bài`, ROUND(AVG(avg_score), 2) AS avg_score\n   FROM mart_score_by_gender GROUP BY gender, assessment_type\n   ORDER BY gender, assessment_type",
+      "visualization_settings": {
+        "graph.dimensions": ["Loại bài", "Giới tính"],
+        "graph.metrics": ["avg_score"],
+        "graph.x_axis.title_text": "Loại bài",
+        "graph.y_axis.title_text": "Điểm trung bình",
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"avg_score\"]": {"column_title": "Điểm TB"}
+        }
+      },
+      "position": {"row": 6, "col": 0, "size_x": 6, "size_y": 4}
+    },
+    {
+      "name": "Pass Rate by Education Level",
+      "display": "row",
+      "database": "OULAD Student Data Mart",
+      "query": "SELECT highest_education AS `Trình độ học vấn`, ROUND(AVG(pass_rate_pct), 2) AS avg_pass_rate_pct\n   FROM mart_education_impact GROUP BY highest_education\n   ORDER BY avg_pass_rate_pct DESC",
+      "visualization_settings": {
+        "graph.dimensions": ["Trình độ học vấn"],
+        "graph.metrics": ["avg_pass_rate_pct"],
+        "graph.x_axis.title_text": "Pass Rate (%)",
+        "graph.show_values": true,
+        "column_settings": {
+          "[\"name\",\"avg_pass_rate_pct\"]": {"column_title": "Pass Rate", "suffix": "%"}
+        }
+      },
+      "position": {"row": 10, "col": 0, "size_x": 12, "size_y": 8}
+    },
+    {
+      "name": "VLE Engagement vs Score",
+      "display": "scatter",
+      "database": "OULAD Student Data Mart",
+      "query": "SELECT risk_group AS `Nhóm rủi ro`, avg_total_clicks, avg_score\n   FROM mart_vle_engagement\n   WHERE avg_total_clicks IS NOT NULL",
+      "visualization_settings": {
+        "graph.dimensions": ["avg_total_clicks"],
+        "graph.metrics": ["avg_score"],
+        "graph.x_axis.title_text": "Trung bình click VLE",
+        "graph.y_axis.title_text": "Điểm trung bình",
+        "series_settings": {
+          "Low":     {"color": "#51cf66"},
+          "Medium":  {"color": "#fab005"},
+          "High":    {"color": "#ff6b6b"},
+          "Unknown": {"color": "#adb5bd"}
+        }
+      },
+      "position": {"row": 10, "col": 12, "size_x": 12, "size_y": 8}
+    },
+    {
+      "type": "text",
+      "display": "text",
+      "text": "### 💡 Insight & Action\n\n- **Trình độ học vấn càng cao → pass rate càng cao**: chênh lệch giữa nhóm `No formal qual` và `HE Qualification` lên tới **~20pt** → cần lớp dự bị cho nhóm trình độ thấp.\n- **VLE click ↑ → điểm ↑**: nhóm Low Risk có click ~2× nhóm High Risk → khuyến cáo theo dõi hoạt động VLE 30 ngày đầu để cảnh báo sớm.\n- **8,521 sinh viên high-risk** đang trong danh sách dưới — top 100 nên có buổi 1-1 với mentor trong tuần đầu kỳ.",
+      "position": {"row": 18, "col": 0, "size_x": 24, "size_y": 4}
+    },
+    {
+      "name": "Top 100 At-Risk Students — Intervention candidates",
+      "display": "table",
+      "database": "OULAD Student Data Mart",
+      "query": "SELECT id_student AS `Mã SV`, code_module AS Module, code_presentation AS Kỳ,\n          num_high_risk_submissions AS `Số High-Risk`, ROUND(avg_score,1) AS `Điểm TB`, final_result AS `Kết quả`\n   FROM mart_at_risk_students\n   ORDER BY num_high_risk_submissions DESC, avg_score ASC\n   LIMIT 100",
+      "visualization_settings": {},
+      "position": {"row": 22, "col": 0, "size_x": 24, "size_y": 10}
+    }
+  ]
+}

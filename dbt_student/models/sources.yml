@@ -1,0 +1,103 @@
+version: 2
+
+sources:
+  - name: student_dwh
+    database: student_dwh
+    schema: student_dwh
+    description: Student Data Warehouse Star Schema
+    tables:
+      - name: Fact_Performance
+        description: Fact table with grain student × course × assessment × presentation
+        columns:
+          - name: fact_id
+            description: Primary key
+            tests:
+              - not_null
+              - unique
+          - name: student_key
+            tests:
+              - not_null
+          - name: course_key
+            tests:
+              - not_null
+          - name: assessment_key
+            tests:
+              - not_null
+          - name: time_key
+            tests:
+              - not_null
+          - name: score
+            description: Score of this assessment (NULL if not submitted)
+          - name: final_result
+            tests:
+              - accepted_values:
+                  values: ['Pass', 'Fail', 'Withdrawn', 'Distinction']
+          - name: risk_group
+            tests:
+              - accepted_values:
+                  values: ['Low', 'Medium', 'High', 'Unknown']
+
+      - name: Dim_Student
+        description: Student dimension
+        columns:
+          - name: student_key
+            tests:
+              - not_null
+              - unique
+          - name: id_student
+            tests:
+              - not_null
+              - unique
+          - name: gender
+            tests:
+              - accepted_values:
+                  values: ['M', 'F']
+          - name: disability
+            tests:
+              - accepted_values:
+                  values: ['Y', 'N']
+
+      - name: Dim_Course
+        description: Course dimension (code_module × code_presentation)
+        columns:
+          - name: course_key
+            tests:
+              - not_null
+              - unique
+          - name: code_module
+            tests:
+              - not_null
+          - name: code_presentation
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['2013J', '2013B', '2014J', '2014B']
+
+      - name: Dim_Assessment
+        description: Assessment dimension
+        columns:
+          - name: assessment_key
+            tests:
+              - not_null
+              - unique
+          - name: id_assessment
+            tests:
+              - not_null
+              - unique
+          - name: assessment_type
+            tests:
+              - accepted_values:
+                  values: ['TMA', 'CMA', 'Exam']
+
+      - name: Dim_Time
+        description: Time dimension (4 presentation periods fixed)
+        columns:
+          - name: time_key
+            tests:
+              - not_null
+              - unique
+          - name: code_presentation
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['2013J', '2013B', '2014J', '2014B']
