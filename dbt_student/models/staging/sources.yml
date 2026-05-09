@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: student_dwh
+    database: student_dwh
+    tables:
+      - name: Fact_Performance
+      - name: Dim_Student
+      - name: Dim_Course
+      - name: Dim_Time
+      - name: Dim_Assessment
