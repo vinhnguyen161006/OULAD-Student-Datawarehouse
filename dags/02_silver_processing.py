@@ -1,10 +1,15 @@
 # DAG 02 — silver_processing: Bronze CSV → validate + clean → Silver Parquet
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from airflow.datasets import Dataset
 from airflow.decorators import dag, task
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+
+DEFAULT_ARGS = {
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
+}
 
 BRONZE_DATASET = Dataset("s3://oulad-bronze")
 SILVER_DATASET = Dataset("s3://oulad-silver")
@@ -43,6 +48,7 @@ _ENV_VARS = {
     schedule=[BRONZE_DATASET],
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    default_args=DEFAULT_ARGS,
     tags=["silver", "pyspark", "minio", "oulad"],
     doc_md="""
 **Input**: `s3://oulad-bronze` → trigger bởi `bronze_ingest`

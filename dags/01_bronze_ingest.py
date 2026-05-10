@@ -1,9 +1,14 @@
 # DAG 01 — bronze_ingest: kiểm tra 7 CSV trong MinIO oulad-bronze → publish s3://oulad-bronze
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from airflow.datasets import Dataset
 from airflow.decorators import dag, task
+
+DEFAULT_ARGS = {
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
+}
 
 BRONZE_DATASET = Dataset("s3://oulad-bronze")
 
@@ -23,6 +28,7 @@ EXPECTED_FILES = [
     schedule=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    default_args=DEFAULT_ARGS,
     tags=["bronze", "minio", "oulad"],
     doc_md="""
 **Input**: MinIO `oulad-bronze` (chạy `make upload-data` trước)

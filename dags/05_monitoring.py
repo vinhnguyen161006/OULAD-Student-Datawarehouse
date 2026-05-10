@@ -1,11 +1,16 @@
 # DAG 05 — monitoring: health checks DWH + Mart → student_dwh.monitoring_log
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from textwrap import dedent
 
 from airflow.datasets import Dataset
 from airflow.decorators import dag
 from airflow.operators.bash import BashOperator
+
+DEFAULT_ARGS = {
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
+}
 
 MART_DATASET = Dataset("mysql://student_data_mart")
 
@@ -34,6 +39,7 @@ _ENV = {
     schedule=[MART_DATASET],
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    default_args=DEFAULT_ARGS,
     tags=["monitoring", "pyspark", "mysql", "oulad"],
     doc_md="""
 **Input**: `mysql://student_data_mart` → trigger bởi `gold_dbt_run`

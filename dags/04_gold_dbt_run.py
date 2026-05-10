@@ -1,10 +1,15 @@
 # DAG 04 — gold_dbt_run: student_dwh → dbt build → student_data_mart
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from airflow.datasets import Dataset
 from airflow.decorators import dag, task
 from airflow.operators.bash import BashOperator
+
+DEFAULT_ARGS = {
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
+}
 
 FACT_PERF_DATASET = Dataset("mysql://student_dwh/fact_performance")
 MART_DATASET      = Dataset("mysql://student_data_mart")
@@ -30,6 +35,7 @@ _DBT_FLAGS = (
     schedule=[FACT_PERF_DATASET],
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    default_args=DEFAULT_ARGS,
     tags=["gold", "dbt", "mysql", "oulad"],
     doc_md="""
 **Input**: `mysql://student_dwh/fact_performance` → trigger bởi `dwh_load`

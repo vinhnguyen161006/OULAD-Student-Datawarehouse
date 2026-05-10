@@ -1,10 +1,15 @@
 # DAG 03 — dwh_load: Silver Parquet → Star Schema → MySQL student_dwh
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from airflow.datasets import Dataset
 from airflow.decorators import dag, task
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+
+DEFAULT_ARGS = {
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
+}
 
 SILVER_DATASET    = Dataset("s3://oulad-silver")
 FACT_PERF_DATASET = Dataset("mysql://student_dwh/fact_performance")
@@ -46,6 +51,7 @@ _ENV_VARS = {
     schedule=[SILVER_DATASET],
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    default_args=DEFAULT_ARGS,
     tags=["dwh", "pyspark", "minio", "mysql", "oulad"],
     doc_md="""
 **Input**: `s3://oulad-silver` → trigger bởi `silver_processing`
