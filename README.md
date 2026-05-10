@@ -113,7 +113,24 @@ make mysql-shell
 - `03 Demographics & Success Factors`: funnel + IMD/region/disability impact + recommendations
 - `04 Module Performance Matrix`: module ranking + length vs pass rate + curriculum review
 
-Dashboard screenshot guide: `docs/screenshots/README.md`.
+### Screenshots
+
+#### 00 — Executive Summary
+![Executive Summary](docs/screenshots/00_executive_summary.png)
+
+#### 01 — Student Performance
+![Student Performance](docs/screenshots/01_student_performance.png)
+
+#### 02 — Pipeline Health
+![Pipeline Health](docs/screenshots/02_pipeline_heath.png)
+
+#### 03 — Demographics & Success Factors
+![Demographics & Success Factors](docs/screenshots/03_demographic_success.png)
+
+#### 04 — Module Performance Matrix
+![Module Performance Matrix](docs/screenshots/04_module_performance.png)
+
+Screenshot capture guide: [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 ## Historical / re-import
 
