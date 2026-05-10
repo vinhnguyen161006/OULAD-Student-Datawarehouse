@@ -59,6 +59,70 @@ jobs:
             --profiles-dir dbt_student
 
   # ============================================================
+  # dbt build + test (integration — chạy thật trên MySQL service)
+  # ============================================================
+  dbt-build-test:
+    name: dbt build + test (MySQL)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_DATABASE: student_dwh
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -prootpassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt-mysql + client
+        run: |
+          pip install --upgrade pip
+          pip install dbt-mysql==1.7.0 mysqlclient==2.2.4
+          sudo apt-get update && sudo apt-get install -y mysql-client
+
+      - name: Wait for MySQL ready
+        run: |
+          for i in {1..30}; do
+            mysql -h 127.0.0.1 -P 3306 -uroot -prootpassword -e "SELECT 1" && break
+            sleep 2
+          done
+
+      - name: Init DWH schema + seed minimum fixture
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -uroot -prootpassword < docker/mysql/init.sql
+          mysql -h 127.0.0.1 -P 3306 -uroot -prootpassword student_dwh <<'SQL'
+            INSERT INTO Dim_Course VALUES ('AAA','2013J',268);
+            INSERT INTO Dim_Student VALUES (1,'M','East','HE Qualification','0-10%','35-55','N',0,60);
+            INSERT INTO Dim_Assessment VALUES (1001,'AAA','2013J','TMA',10.0,30);
+            INSERT INTO Fact_Performance (id_student,code_module,code_presentation,id_assessment,score,total_clicks,final_result,score_vs_avg,risk_group)
+              VALUES (1,'AAA','2013J',1001,75.0,420,'Pass',5.0,'Low');
+            INSERT INTO Fact_Performance (id_student,code_module,code_presentation,id_assessment,score,total_clicks,final_result,score_vs_avg,risk_group)
+              VALUES (1,'AAA','2013J',1001,40.0,80,'Fail',-30.0,'High');
+          SQL
+
+      - name: dbt build (run + test)
+        env:
+          DBT_HOST: 127.0.0.1
+          DBT_PORT: "3306"
+          DBT_USER: root
+          DBT_PASSWORD: rootpassword
+        run: |
+          dbt deps --project-dir dbt_student --profiles-dir dbt_student
+          dbt build \
+            --project-dir dbt_student \
+            --profiles-dir dbt_student
+
+  # ============================================================
   # Airflow DAG validation (import + cycle check)
   # ============================================================
   airflow-dags:
